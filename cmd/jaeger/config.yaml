@@ -1,5 +1,5 @@
 service:
-  extensions: [jaeger_storage, jaeger_query, jaeger_mcp, remote_sampling, healthcheckv2, pprof]
+  extensions: [jaeger_storage, jaeger_query, jaeger_mcp, remote_sampling, healthcheckv2, pprof, ai_analysis]
   pipelines:
     traces:
       receivers: [otlp, jaeger, zipkin]
@@ -65,6 +65,25 @@ extensions:
       initial_sampling_probability: 0.1
     http:
     grpc:
+
+  ai_analysis:
+    http:
+      endpoint: 0.0.0.0:16688
+    llm:
+      provider: ollama
+      ollama:
+        base_url: http://localhost:11434
+        model: qwen2.5:1.5b
+        temperature: 0.1
+        max_tokens: 2048
+    features:
+      nl_search: true
+      span_explanation: true
+      smart_filter: true
+    performance:
+      request_timeout: 30s
+      streaming_enabled: true
+      cache_enabled: false
 
 receivers:
   otlp:
