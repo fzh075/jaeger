@@ -39,7 +39,7 @@ func TestNLSearchHandler_InvalidRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/ai/search", bytes.NewBufferString(tt.body))
+			req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/search", bytes.NewBufferString(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -72,7 +72,7 @@ func TestExplainHandler_InvalidRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/ai/explain/span", bytes.NewBufferString(tt.body))
+			req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/explain/span", bytes.NewBufferString(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -105,7 +105,7 @@ func TestClassifyHandler_InvalidRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/ai/classify", bytes.NewBufferString(tt.body))
+			req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/classify", bytes.NewBufferString(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 

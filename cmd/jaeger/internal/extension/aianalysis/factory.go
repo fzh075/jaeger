@@ -21,7 +21,7 @@ var componentType = component.MustNewType("ai_analysis")
 // ID is the identifier of this extension.
 var ID = component.NewID(componentType)
 
-// NewFactory creates a factory for the Jaeger AI extension.
+// NewFactory creates a factory for the AI Analysis extension.
 func NewFactory() extension.Factory {
 	return extension.NewFactory(
 		componentType,

@@ -28,7 +28,7 @@ var (
 	_ extensioncapabilities.Dependent = (*server)(nil)
 )
 
-// server implements the Jaeger AI extension.
+// server implements the AI Analysis extension.
 type server struct {
 	config      *Config
 	telset      component.TelemetrySettings
@@ -38,7 +38,7 @@ type server struct {
 	queryAPI    *querysvc.QueryService
 }
 
-// newServer creates a new AI server instance.
+// newServer creates a new AI Analysis instance.
 func newServer(config *Config, telset component.TelemetrySettings) *server {
 	return &server{
 		config: config,
@@ -52,9 +52,9 @@ func (*server) Dependencies() []component.ID {
 	return []component.ID{jaegerquery.ID}
 }
 
-// Start initializes and starts the AI server.
+// Start initializes and starts the AI Analysis server.
 func (s *server) Start(ctx context.Context, host component.Host) error {
-	s.telset.Logger.Info("Starting Jaeger AI server", zap.String("endpoint", s.config.HTTP.NetAddr.Endpoint))
+	s.telset.Logger.Info("Starting AI Analysis server", zap.String("endpoint", s.config.HTTP.NetAddr.Endpoint))
 
 	// Get QueryService from jaegerquery extension
 	queryExt, err := jaegerquery.GetExtension(host)
@@ -90,11 +90,11 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 	// Start the server in a goroutine
 	go func() {
 		if err := s.httpServer.Serve(s.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.telset.Logger.Error("AI server error", zap.Error(err))
+			s.telset.Logger.Error("AI Analysis error", zap.Error(err))
 		}
 	}()
 
-	s.telset.Logger.Info("Jaeger AI server started successfully",
+	s.telset.Logger.Info("AI Analysis server started successfully",
 		zap.String("endpoint", s.config.HTTP.NetAddr.Endpoint),
 		zap.Bool("nl_search", s.config.Features.NLSearch),
 		zap.Bool("span_explanation", s.config.Features.SpanExplanation),
@@ -102,9 +102,9 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 	return nil
 }
 
-// Shutdown gracefully stops the AI server.
+// Shutdown gracefully stops the AI Analysis server.
 func (s *server) Shutdown(ctx context.Context) error {
-	s.telset.Logger.Info("Shutting down Jaeger AI server")
+	s.telset.Logger.Info("Shutting down AI Analysis server")
 
 	var errs []error
 
@@ -152,7 +152,7 @@ func (s *server) createLLMProvider() (llm.Provider, error) {
 	}
 }
 
-// createRouter sets up HTTP routes for AI endpoints.
+// createRouter sets up HTTP routes for AI Analysis endpoints.
 func (s *server) createRouter() *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -160,26 +160,26 @@ func (s *server) createRouter() *http.ServeMux {
 	mux.HandleFunc("/health", s.handleHealth)
 
 	// Capabilities endpoint
-	mux.HandleFunc("/api/ai/capabilities", s.handleCapabilities)
+	mux.HandleFunc("/api/ai-analysis/capabilities", s.handleCapabilities)
 
 	// Natural language search endpoints
 	if s.config.Features.NLSearch {
 		nlSearchHandler := handlers.NewNLSearchHandler(s.llmProvider, s.queryAPI, s.telset.Logger)
-		mux.HandleFunc("POST /api/ai/search", nlSearchHandler.Handle)
-		mux.HandleFunc("POST /api/ai/search/stream", nlSearchHandler.HandleStream)
+		mux.HandleFunc("POST /api/ai-analysis/search", nlSearchHandler.Handle)
+		mux.HandleFunc("POST /api/ai-analysis/search/stream", nlSearchHandler.HandleStream)
 	}
 
 	// Span explanation endpoints
 	if s.config.Features.SpanExplanation {
 		explainHandler := handlers.NewExplainHandler(s.llmProvider, s.telset.Logger)
-		mux.HandleFunc("POST /api/ai/explain/span", explainHandler.Handle)
-		mux.HandleFunc("POST /api/ai/explain/span/stream", explainHandler.HandleStream)
+		mux.HandleFunc("POST /api/ai-analysis/explain/span", explainHandler.Handle)
+		mux.HandleFunc("POST /api/ai-analysis/explain/span/stream", explainHandler.HandleStream)
 	}
 
 	// Smart filter/classification endpoint
 	if s.config.Features.SmartFilter {
 		classifyHandler := handlers.NewClassifyHandler(s.llmProvider, s.telset.Logger)
-		mux.HandleFunc("POST /api/ai/classify", classifyHandler.Handle)
+		mux.HandleFunc("POST /api/ai-analysis/classify", classifyHandler.Handle)
 	}
 
 	return mux
@@ -195,7 +195,7 @@ func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// CapabilitiesResponse represents the AI capabilities response.
+// CapabilitiesResponse represents the AI Analysis capabilities response.
 type CapabilitiesResponse struct {
 	NLSearch        bool   `json:"nl_search"`
 	SpanExplanation bool   `json:"span_explanation"`
@@ -205,7 +205,7 @@ type CapabilitiesResponse struct {
 	Model           string `json:"model"`
 }
 
-// handleCapabilities returns the enabled AI capabilities.
+// handleCapabilities returns the enabled AI Analysis capabilities.
 func (s *server) handleCapabilities(w http.ResponseWriter, _ *http.Request) {
 	model := ""
 	switch s.config.LLM.Provider {

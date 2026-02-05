@@ -35,7 +35,7 @@ func TestHandleCapabilities(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	s := newServer(cfg, component.TelemetrySettings{})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ai/capabilities", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", nil)
 	w := httptest.NewRecorder()
 
 	s.handleCapabilities(w, req)

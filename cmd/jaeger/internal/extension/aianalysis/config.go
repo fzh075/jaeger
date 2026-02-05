@@ -11,15 +11,15 @@ import (
 	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
-// Config represents the configuration for the Jaeger AI extension.
+// Config represents the configuration for the AI Analysis extension.
 type Config struct {
-	// HTTP contains the HTTP server configuration for the AI API endpoints.
+	// HTTP contains the HTTP server configuration for the AI Analysis API endpoints.
 	HTTP confighttp.ServerConfig `mapstructure:"http"`
 
 	// LLM contains the LLM provider configuration.
 	LLM LLMConfig `mapstructure:"llm"`
 
-	// Features enables/disables specific AI features.
+	// Features enables/disables specific AI Analysis features.
 	Features FeaturesConfig `mapstructure:"features"`
 
 	// Performance contains performance-related settings.
@@ -71,7 +71,7 @@ type OpenAIConfig struct {
 	MaxTokens int `mapstructure:"max_tokens" valid:"range(1|128000)"`
 }
 
-// FeaturesConfig enables/disables specific AI features.
+// FeaturesConfig enables/disables specific AI Analysis features.
 type FeaturesConfig struct {
 	// NLSearch enables natural language trace search
 	NLSearch bool `mapstructure:"nl_search"`
@@ -85,7 +85,8 @@ type FeaturesConfig struct {
 
 // PerformanceConfig contains performance-related settings.
 type PerformanceConfig struct {
-	// RequestTimeout is the maximum time for AI requests
+	//
+	// RequestTimeout is the maximum time for AI requests TODO(fzh075)
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 
 	// StreamingEnabled enables SSE streaming for long responses
