@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/ai_analysis/internal/llm"
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/ai_analysis/internal/types"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
 
 const classifierPromptTemplate = `You are an expert in distributed tracing analysis. Classify the following spans to help users filter noise and focus on important spans.

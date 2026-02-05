@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/ai_analysis/internal/llm"
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/ai_analysis/internal/types"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
 
 const nlSearchPromptTemplate = `You are a trace search query parser for Jaeger, a distributed tracing system.
