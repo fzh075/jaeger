@@ -115,7 +115,6 @@ func (fakeStorageExt) Shutdown(context.Context) error {
 type fakeAIAnalysisExt struct {
 	registerErr error
 	called      bool
-	qs          *querysvc.QueryService
 }
 
 func (f *fakeAIAnalysisExt) Start(context.Context, component.Host) error {
@@ -126,9 +125,8 @@ func (f *fakeAIAnalysisExt) Shutdown(context.Context) error {
 	return nil
 }
 
-func (f *fakeAIAnalysisExt) RegisterRoutes(_ *mux.Router, qs *querysvc.QueryService) error {
+func (f *fakeAIAnalysisExt) RegisterRoutes(_ *mux.Router) error {
 	f.called = true
-	f.qs = qs
 	return f.registerErr
 }
 
@@ -484,14 +482,12 @@ func TestRouteRegistrars(t *testing.T) {
 		Logger: zaptest.NewLogger(t),
 	}
 	s := newServer(createDefaultConfig().(*Config), telset)
-	qs := &querysvc.QueryService{}
-
 	t.Run("ai extension not configured", func(t *testing.T) {
 		host := &fakeHostWithExtensions{
 			Host:       componenttest.NewNopHost(),
 			extensions: map[component.ID]component.Component{},
 		}
-		registrars, err := s.routeRegistrars(host, qs)
+		registrars, err := s.routeRegistrars(host)
 		require.NoError(t, err)
 		require.Empty(t, registrars)
 	})
@@ -504,14 +500,13 @@ func TestRouteRegistrars(t *testing.T) {
 				aianalysis.ID: aiExt,
 			},
 		}
-		registrars, err := s.routeRegistrars(host, qs)
+		registrars, err := s.routeRegistrars(host)
 		require.NoError(t, err)
 		require.Len(t, registrars, 1)
 
 		err = registrars[0](mux.NewRouter())
 		require.NoError(t, err)
 		require.True(t, aiExt.called)
-		require.Equal(t, qs, aiExt.qs)
 	})
 
 	t.Run("ai extension type mismatch", func(t *testing.T) {
@@ -521,7 +516,7 @@ func TestRouteRegistrars(t *testing.T) {
 				aianalysis.ID: wrongComponentType{},
 			},
 		}
-		registrars, err := s.routeRegistrars(host, qs)
+		registrars, err := s.routeRegistrars(host)
 		require.Nil(t, registrars)
 		require.ErrorContains(t, err, "not of expected type")
 	})
@@ -534,7 +529,7 @@ func TestRouteRegistrars(t *testing.T) {
 				aianalysis.ID: aiExt,
 			},
 		}
-		registrars, err := s.routeRegistrars(host, qs)
+		registrars, err := s.routeRegistrars(host)
 		require.NoError(t, err)
 		require.Len(t, registrars, 1)
 		err = registrars[0](mux.NewRouter())

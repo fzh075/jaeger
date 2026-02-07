@@ -12,23 +12,19 @@ import (
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/chains"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 )
 
 // NLSearchHandler handles natural language search requests.
-// TODO(fzh075) delete queryService
 type NLSearchHandler struct {
-	chain        *chains.NLSearchChain
-	queryService *querysvc.QueryService
-	logger       *zap.Logger
+	chain  *chains.NLSearchChain
+	logger *zap.Logger
 }
 
 // NewNLSearchHandler creates a new NL search handler.
-func NewNLSearchHandler(provider llm.Provider, queryService *querysvc.QueryService, logger *zap.Logger) *NLSearchHandler {
+func NewNLSearchHandler(provider llm.Provider, logger *zap.Logger) *NLSearchHandler {
 	return &NLSearchHandler{
-		chain:        chains.NewNLSearchChain(provider),
-		queryService: queryService,
-		logger:       logger,
+		chain:  chains.NewNLSearchChain(provider),
+		logger: logger,
 	}
 }
 

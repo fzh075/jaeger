@@ -18,7 +18,7 @@ import (
 )
 
 func TestNLSearchHandler_InvalidRequest(t *testing.T) {
-	handler := NewNLSearchHandler(nil, nil, zap.NewNop())
+	handler := NewNLSearchHandler(nil, zap.NewNop())
 
 	tests := []struct {
 		name       string

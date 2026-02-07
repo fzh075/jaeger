@@ -17,15 +17,13 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/extension"
-
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 )
 
 type fakeExtension struct {
 	extension.Extension
 }
 
-func (*fakeExtension) RegisterRoutes(*mux.Router, *querysvc.QueryService) error {
+func (*fakeExtension) RegisterRoutes(*mux.Router) error {
 	return nil
 }
 
@@ -69,7 +67,7 @@ func TestGetExtension(t *testing.T) {
 		ext, err := GetExtension(host)
 		require.Nil(t, ext)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ErrExtensionNotFound))
+		require.True(t, errors.Is(err, ErrExtensionNotConfigured))
 	})
 
 	t.Run("wrong type", func(t *testing.T) {
@@ -110,7 +108,7 @@ func TestRegisterRoutes(t *testing.T) {
 	ext := newAIAnalysisExtension(cfg, component.TelemetrySettings{})
 
 	router := mux.NewRouter()
-	err := ext.RegisterRoutes(router, &querysvc.QueryService{})
+	err := ext.RegisterRoutes(router)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", nil)
@@ -124,11 +122,8 @@ func TestRegisterRoutesValidation(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	ext := newAIAnalysisExtension(cfg, component.TelemetrySettings{})
 
-	err := ext.RegisterRoutes(nil, &querysvc.QueryService{})
+	err := ext.RegisterRoutes(nil)
 	require.ErrorContains(t, err, "router is required")
-
-	err = ext.RegisterRoutes(mux.NewRouter(), nil)
-	require.ErrorContains(t, err, "query service is required")
 }
 
 func TestRegisterRoutesFeatureGate(t *testing.T) {
@@ -139,7 +134,7 @@ func TestRegisterRoutesFeatureGate(t *testing.T) {
 	ext := newAIAnalysisExtension(cfg, component.TelemetrySettings{})
 
 	router := mux.NewRouter()
-	err := ext.RegisterRoutes(router, &querysvc.QueryService{})
+	err := ext.RegisterRoutes(router)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/search", nil)

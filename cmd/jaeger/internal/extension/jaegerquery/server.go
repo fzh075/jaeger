@@ -119,7 +119,7 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 
 	tm := tenancy.NewManager(&s.config.Tenancy)
 
-	routeRegistrars, err := s.routeRegistrars(host, qs)
+	routeRegistrars, err := s.routeRegistrars(host)
 	if err != nil {
 		return err
 	}
@@ -146,10 +146,10 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 	return nil
 }
 
-func (s *server) routeRegistrars(host component.Host, qs *querysvc.QueryService) ([]queryapp.RouteRegistrar, error) {
+func (s *server) routeRegistrars(host component.Host) ([]queryapp.RouteRegistrar, error) {
 	aiExt, err := aianalysis.GetExtension(host)
 	if err != nil {
-		if errors.Is(err, aianalysis.ErrExtensionNotFound) {
+		if errors.Is(err, aianalysis.ErrExtensionNotConfigured) {
 			s.telset.Logger.Info("AI Analysis extension not configured; skipping AI route registration")
 			return nil, nil
 		}
@@ -157,7 +157,7 @@ func (s *server) routeRegistrars(host component.Host, qs *querysvc.QueryService)
 	}
 	return []queryapp.RouteRegistrar{
 		func(router *mux.Router) error {
-			return aiExt.RegisterRoutes(router, qs)
+			return aiExt.RegisterRoutes(router)
 		},
 	}, nil
 }

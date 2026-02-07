@@ -18,16 +18,15 @@ import (
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/handlers"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
-	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 )
 
-// ErrExtensionNotFound indicates ai_analysis extension is not configured.
-var ErrExtensionNotFound = errors.New("cannot find ai_analysis extension")
+// ErrExtensionNotConfigured indicates ai_analysis extension is not configured.
+var ErrExtensionNotConfigured = errors.New("cannot find ai_analysis extension")
 
 // Extension is the interface implemented by ai_analysis extension.
 type Extension interface {
 	extension.Extension
-	RegisterRoutes(router *mux.Router, queryAPI *querysvc.QueryService) error
+	RegisterRoutes(router *mux.Router) error
 }
 
 var (
@@ -82,12 +81,9 @@ func (s *aiAnalysisExtension) Shutdown(_ context.Context) error {
 }
 
 // RegisterRoutes registers AI Analysis HTTP endpoints into Query router.
-func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router, queryAPI *querysvc.QueryService) error {
+func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
 	if router == nil {
 		return errors.New("router is required")
-	}
-	if queryAPI == nil {
-		return errors.New("query service is required")
 	}
 	if err := s.ensureLLMProvider(); err != nil {
 		return fmt.Errorf("failed to initialize LLM provider: %w", err)
@@ -96,9 +92,8 @@ func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router, queryAPI *query
 	router.HandleFunc("/api/ai-analysis/capabilities", s.handleCapabilities).Methods(http.MethodGet)
 
 	if s.config.Features.NLSearch {
-		nlSearchHandler := handlers.NewNLSearchHandler(s.llmProvider, queryAPI, s.telset.Logger)
+		nlSearchHandler := handlers.NewNLSearchHandler(s.llmProvider, s.telset.Logger)
 		router.HandleFunc("/api/ai-analysis/search", nlSearchHandler.Handle).Methods(http.MethodPost)
-		router.HandleFunc("/api/ai-analysis/search/stream", nlSearchHandler.Handle).Methods(http.MethodPost)
 	}
 
 	if s.config.Features.SpanExplanation {
@@ -209,7 +204,7 @@ func GetExtension(host component.Host) (Extension, error) {
 		}
 	}
 	if comp == nil {
-		return nil, fmt.Errorf("%w: '%s'", ErrExtensionNotFound, componentType)
+		return nil, fmt.Errorf("%w: '%s'", ErrExtensionNotConfigured, componentType)
 	}
 	ext, ok := comp.(Extension)
 	if !ok {
