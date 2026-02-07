@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -17,6 +16,7 @@ import (
 )
 
 // NLSearchHandler handles natural language search requests.
+// TODO(fzh075) delete queryService
 type NLSearchHandler struct {
 	chain        *chains.NLSearchChain
 	queryService *querysvc.QueryService
@@ -59,53 +59,6 @@ func (h *NLSearchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.sendJSON(w, http.StatusOK, response)
-}
-
-// HandleStream processes streaming NL search requests using SSE.
-func (h *NLSearchHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
-	var req types.NLSearchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.sendError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
-		return
-	}
-
-	if req.Query == "" {
-		h.sendError(w, http.StatusBadRequest, "Query is required")
-		return
-	}
-
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		h.sendError(w, http.StatusInternalServerError, "Streaming not supported")
-		return
-	}
-
-	h.logger.Info("Processing streaming NL search request", zap.String("query", req.Query))
-
-	err := h.chain.ParseStream(r.Context(), req.Query, func(chunk string) error {
-		_, err := fmt.Fprintf(w, "data: %s\n\n", chunk)
-		if err != nil {
-			return err
-		}
-		flusher.Flush()
-		return nil
-	})
-
-	if err != nil {
-		h.logger.Error("Streaming NL search failed", zap.Error(err))
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-		flusher.Flush()
-		return
-	}
-
-	// Send done event
-	fmt.Fprint(w, "event: done\ndata: {}\n\n")
-	flusher.Flush()
 }
 
 func (h *NLSearchHandler) sendJSON(w http.ResponseWriter, status int, data any) {

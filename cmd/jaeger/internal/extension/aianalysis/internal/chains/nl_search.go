@@ -41,17 +41,17 @@ OUTPUT FORMAT (JSON only, no explanation):
 
 EXAMPLES:
 
-Query: "Show me errors in payment-service"
-{"service_name":"payment-service","span_name":"","duration_min":"","duration_max":"","has_errors":true,"start_time_min":"-1h","start_time_max":"","attributes":{},"limit":20,"confidence":0.95}
+Query: "Show me 500 errors from payment-service > 2s"
+{"service_name": "payment-service", "span_name": "", "duration_min": "2s", "duration_max": "", "has_errors": false, "attributes": {"http.status_code": "500"}, "limit": 20}
 
-Query: "Find slow requests over 2 seconds in api-gateway"
-{"service_name":"api-gateway","span_name":"","duration_min":"2s","duration_max":"","has_errors":false,"start_time_min":"-1h","start_time_max":"","attributes":{},"limit":20,"confidence":0.9}
+Query: "frontend service last 1 hour errors"
+{"service_name": "frontend", "span_name": "", "duration_min": "", "duration_max": "", "has_errors": true, "start_time_min": "-1h", "attributes": {}, "limit": 20}
 
-Query: "找出 user-service 中超过 500ms 的请求"
-{"service_name":"user-service","span_name":"","duration_min":"500ms","duration_max":"","has_errors":false,"start_time_min":"-1h","start_time_max":"","attributes":{},"limit":20,"confidence":0.9}
+Query: "Find checkout operation taking between 500ms and 1s"
+{"service_name": "", "span_name": "checkout", "duration_min": "500ms", "duration_max": "1s", "has_errors": false, "attributes": {}, "limit": 20}
 
-Query: "Show traces with http.status_code=500 in order-service"
-{"service_name":"order-service","span_name":"","duration_min":"","duration_max":"","has_errors":false,"start_time_min":"-1h","start_time_max":"","attributes":{"http.status_code":"500"},"limit":20,"confidence":0.85}
+Query: "mysql queries in order-service"
+{"service_name": "order-service", "span_name": "", "duration_min": "", "duration_max": "", "has_errors": false, "attributes": {"db.system": "mysql"}, "limit": 20}
 
 Now parse this query:
 Query: "%s"
@@ -84,8 +84,14 @@ func (c *NLSearchChain) Parse(ctx context.Context, query string) (types.NLSearch
 		}, nil
 	}
 
+	// TODO(fzh075)
+	fmt.Printf("[fzh] response = %+v\n", response)
+
 	// Extract JSON from response (handle markdown code blocks)
 	jsonStr := extractJSON(response)
+
+	// TODO(fzh075)
+	fmt.Printf("[fzh] jsonStr = %+v\n", jsonStr)
 
 	var parsed ParsedQueryWithConfidence
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
@@ -100,13 +106,7 @@ func (c *NLSearchChain) Parse(ctx context.Context, query string) (types.NLSearch
 	}, nil
 }
 
-// ParseStream converts a natural language query with streaming response.
-func (c *NLSearchChain) ParseStream(ctx context.Context, query string, handler llm.StreamHandler) error {
-	prompt := fmt.Sprintf(nlSearchPromptTemplate, query)
-	return c.provider.GenerateStream(ctx, prompt, handler)
-}
-
-// extractJSON extracts JSON from a response that may contain markdown code blocks.
+// extractJSON extracts JSON from a response that may contain Markdown code blocks.
 func extractJSON(response string) string {
 	response = strings.TrimSpace(response)
 
