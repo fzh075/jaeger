@@ -67,8 +67,6 @@ extensions:
     grpc:
 
   ai_analysis:
-    http:
-      endpoint: 0.0.0.0:16688
     llm:
       provider: ollama
       ollama:

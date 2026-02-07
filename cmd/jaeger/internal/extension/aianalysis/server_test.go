@@ -9,27 +9,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/component/componenttest"
+
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 )
-
-func TestHandleHealth(t *testing.T) {
-	cfg := createDefaultConfig().(*Config)
-	s := newServer(cfg, component.TelemetrySettings{})
-
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	w := httptest.NewRecorder()
-
-	s.handleHealth(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var result map[string]string
-	err := json.NewDecoder(w.Body).Decode(&result)
-	assert.NoError(t, err)
-	assert.Equal(t, "ok", result["status"])
-	assert.Equal(t, "ollama", result["provider"])
-}
 
 func TestHandleCapabilities(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
@@ -53,27 +40,56 @@ func TestHandleCapabilities(t *testing.T) {
 	assert.Equal(t, "qwen2.5:1.5b", result.Model)
 }
 
-func TestCorsMiddleware(t *testing.T) {
-	handler := corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+func TestRegisterRoutes(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	s := newServer(cfg, component.TelemetrySettings{})
 
-	t.Run("adds CORS headers", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		w := httptest.NewRecorder()
+	router := mux.NewRouter()
+	err := s.RegisterRoutes(router, &querysvc.QueryService{})
+	require.NoError(t, err)
 
-		handler.ServeHTTP(w, req)
+	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
 
-		assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
-		assert.Contains(t, w.Header().Get("Access-Control-Allow-Methods"), "POST")
-	})
+	assert.Equal(t, http.StatusOK, w.Code)
+}
 
-	t.Run("handles preflight OPTIONS request", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodOptions, "/test", nil)
-		w := httptest.NewRecorder()
+func TestRegisterRoutesValidation(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	s := newServer(cfg, component.TelemetrySettings{})
 
-		handler.ServeHTTP(w, req)
+	err := s.RegisterRoutes(nil, &querysvc.QueryService{})
+	require.ErrorContains(t, err, "router is required")
 
-		assert.Equal(t, http.StatusNoContent, w.Code)
-	})
+	err = s.RegisterRoutes(mux.NewRouter(), nil)
+	require.ErrorContains(t, err, "query service is required")
+}
+
+func TestRegisterRoutesFeatureGate(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Features.NLSearch = false
+	cfg.Features.SpanExplanation = false
+	cfg.Features.SmartFilter = false
+	s := newServer(cfg, component.TelemetrySettings{})
+
+	router := mux.NewRouter()
+	err := s.RegisterRoutes(router, &querysvc.QueryService{})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/search", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestStartShutdown(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	s := newServer(cfg, component.TelemetrySettings{})
+
+	err := s.Start(t.Context(), componenttest.NewNopHost())
+	require.NoError(t, err)
+
+	err = s.Shutdown(t.Context())
+	require.NoError(t, err)
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/extension/extensioncapabilities"
@@ -15,6 +16,7 @@ import (
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis"
 	queryapp "github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/internal"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerstorage"
@@ -117,6 +119,11 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 
 	tm := tenancy.NewManager(&s.config.Tenancy)
 
+	routeRegistrars, err := s.routeRegistrars(host, qs)
+	if err != nil {
+		return err
+	}
+
 	s.server, err = queryapp.NewServer(
 		ctx,
 		// TODO propagate healthcheck updates up to the collector's runtime
@@ -125,6 +132,7 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 		&s.config.QueryOptions,
 		tm,
 		telset,
+		routeRegistrars...,
 	)
 	if err != nil {
 		return fmt.Errorf("could not create jaeger-query: %w", err)
@@ -136,6 +144,22 @@ func (s *server) Start(ctx context.Context, host component.Host) error {
 
 	success = true
 	return nil
+}
+
+func (s *server) routeRegistrars(host component.Host, qs *querysvc.QueryService) ([]queryapp.RouteRegistrar, error) {
+	aiExt, err := aianalysis.GetExtension(host)
+	if err != nil {
+		if errors.Is(err, aianalysis.ErrExtensionNotFound) {
+			s.telset.Logger.Info("AI Analysis extension not configured; skipping AI route registration")
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot get %s extension: %w", aianalysis.ID, err)
+	}
+	return []queryapp.RouteRegistrar{
+		func(router *mux.Router) error {
+			return aiExt.RegisterRoutes(router, qs)
+		},
+	}, nil
 }
 
 func (s *server) addArchiveStorage(

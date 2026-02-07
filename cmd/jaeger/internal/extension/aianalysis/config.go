@@ -7,15 +7,11 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
-	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
 // Config represents the configuration for the AI Analysis extension.
 type Config struct {
-	// HTTP contains the HTTP server configuration for the AI Analysis API endpoints.
-	HTTP confighttp.ServerConfig `mapstructure:"http"`
-
 	// LLM contains the LLM provider configuration.
 	LLM LLMConfig `mapstructure:"llm"`
 

@@ -8,11 +8,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/extension"
-
-	"github.com/jaegertracing/jaeger/ports"
 )
 
 // componentType is the name of this extension in configuration.
@@ -34,12 +30,6 @@ func NewFactory() extension.Factory {
 // createDefaultConfig creates the default configuration for the extension.
 func createDefaultConfig() component.Config {
 	return &Config{
-		HTTP: confighttp.ServerConfig{
-			NetAddr: confignet.AddrConfig{
-				Endpoint:  ports.PortToHostPort(ports.AIHTTP),
-				Transport: confignet.TransportTypeTCP,
-			},
-		},
 		LLM: LLMConfig{
 			Provider: "ollama",
 			Ollama: &OllamaConfig{

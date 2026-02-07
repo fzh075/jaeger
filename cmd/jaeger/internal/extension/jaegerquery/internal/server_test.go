@@ -5,13 +5,16 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -930,4 +933,65 @@ func TestServerHTTP_TracesRequest(t *testing.T) {
 			require.NoError(t, resp.Body.Close())
 		})
 	}
+}
+
+func TestInitRouterWithExtraRouteRegistrars(t *testing.T) {
+	querySvc := querysvc.NewQueryService(&tracestoremocks.Reader{}, &depsmocks.Reader{}, querysvc.QueryServiceOptions{})
+	queryOpts := DefaultQueryOptions()
+	queryOpts.BasePath = "/"
+	tenancyMgr := tenancy.NewManager(&queryOpts.Tenancy)
+	telset := initTelSet(zaptest.NewLogger(t), nooptrace.NewTracerProvider())
+
+	called := false
+	registrar := func(router *mux.Router) error {
+		called = true
+		router.HandleFunc("/extra", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}).Methods(http.MethodGet)
+		return nil
+	}
+
+	handler, closer, err := initRouter(
+		querySvc,
+		nil,
+		&queryOpts,
+		tenancyMgr,
+		telset,
+		[]RouteRegistrar{registrar},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, closer)
+	t.Cleanup(func() {
+		require.NoError(t, closer.Close())
+	})
+	require.True(t, called)
+
+	req := httptest.NewRequest(http.MethodGet, "/extra", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestInitRouterWithRegistrarError(t *testing.T) {
+	querySvc := querysvc.NewQueryService(&tracestoremocks.Reader{}, &depsmocks.Reader{}, querysvc.QueryServiceOptions{})
+	queryOpts := DefaultQueryOptions()
+	queryOpts.BasePath = "/"
+	tenancyMgr := tenancy.NewManager(&queryOpts.Tenancy)
+	telset := initTelSet(zaptest.NewLogger(t), nooptrace.NewTracerProvider())
+
+	registrar := func(*mux.Router) error {
+		return errors.New("register failed")
+	}
+
+	handler, closer, err := initRouter(
+		querySvc,
+		nil,
+		&queryOpts,
+		tenancyMgr,
+		telset,
+		[]RouteRegistrar{registrar},
+	)
+	require.Nil(t, handler)
+	require.Nil(t, closer)
+	require.ErrorContains(t, err, "register failed")
 }

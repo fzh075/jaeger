@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/config/configgrpc"
@@ -55,6 +56,7 @@ func NewServer(
 	options *QueryOptions,
 	tm *tenancy.Manager,
 	telset telemetry.Settings,
+	extraRouteRegistrars ...RouteRegistrar,
 ) (*Server, error) {
 	_, httpPort, err := net.SplitHostPort(options.HTTP.NetAddr.Endpoint)
 	if err != nil {
@@ -75,7 +77,7 @@ func NewServer(
 		return nil, err
 	}
 	registerGRPCHandlers(grpcServer, querySvc, telset)
-	httpServer, err := createHTTPServer(ctx, querySvc, metricsQuerySvc, options, tm, telset)
+	httpServer, err := createHTTPServer(ctx, querySvc, metricsQuerySvc, options, tm, telset, extraRouteRegistrars)
 	if err != nil {
 		return nil, err
 	}
@@ -153,13 +155,17 @@ type httpServer struct {
 
 var _ io.Closer = (*httpServer)(nil)
 
+// RouteRegistrar registers additional HTTP routes into the query router.
+type RouteRegistrar func(router *mux.Router) error
+
 func initRouter(
 	querySvc *querysvc.QueryService,
 	metricsQuerySvc metricstore.Reader,
 	queryOpts *QueryOptions,
 	tenancyMgr *tenancy.Manager,
 	telset telemetry.Settings,
-) (http.Handler, io.Closer) {
+	extraRouteRegistrars []RouteRegistrar,
+) (http.Handler, io.Closer, error) {
 	apiHandlerOptions := []HandlerOption{
 		HandlerOptions.Logger(telset.Logger),
 		HandlerOptions.Tracer(telset.TracerProvider),
@@ -181,6 +187,11 @@ func initRouter(
 	}).RegisterRoutes(r)
 
 	apiHandler.RegisterRoutes(r)
+	for _, registrar := range extraRouteRegistrars {
+		if err := registrar(r); err != nil {
+			return nil, nil, err
+		}
+	}
 	staticHandlerCloser := RegisterStaticHandler(r, telset.Logger, queryOpts, querySvc.GetCapabilities())
 
 	var handler http.Handler = r
@@ -191,7 +202,7 @@ func initRouter(
 		handler = tenancy.ExtractTenantHTTPHandler(tenancyMgr, handler)
 	}
 	handler = traceResponseHandler(handler)
-	return handler, staticHandlerCloser
+	return handler, staticHandlerCloser, nil
 }
 
 func createHTTPServer(
@@ -201,8 +212,12 @@ func createHTTPServer(
 	queryOpts *QueryOptions,
 	tm *tenancy.Manager,
 	telset telemetry.Settings,
+	extraRouteRegistrars []RouteRegistrar,
 ) (*httpServer, error) {
-	handler, staticHandlerCloser := initRouter(querySvc, metricsQuerySvc, queryOpts, tm, telset)
+	handler, staticHandlerCloser, err := initRouter(querySvc, metricsQuerySvc, queryOpts, tm, telset, extraRouteRegistrars)
+	if err != nil {
+		return nil, err
+	}
 	handler = recoveryhandler.NewRecoveryHandler(telset.Logger, true)(handler)
 	var extensions map[component.ID]component.Component
 	if telset.Host != nil {

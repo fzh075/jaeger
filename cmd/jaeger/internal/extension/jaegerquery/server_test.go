@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/storagetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis"
 	app "github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/internal"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerstorage"
@@ -107,6 +109,45 @@ func (fakeStorageExt) Start(context.Context, component.Host) error {
 }
 
 func (fakeStorageExt) Shutdown(context.Context) error {
+	return nil
+}
+
+type fakeAIAnalysisExt struct {
+	registerErr error
+	called      bool
+	qs          *querysvc.QueryService
+}
+
+func (f *fakeAIAnalysisExt) Start(context.Context, component.Host) error {
+	return nil
+}
+
+func (f *fakeAIAnalysisExt) Shutdown(context.Context) error {
+	return nil
+}
+
+func (f *fakeAIAnalysisExt) RegisterRoutes(_ *mux.Router, qs *querysvc.QueryService) error {
+	f.called = true
+	f.qs = qs
+	return f.registerErr
+}
+
+type fakeHostWithExtensions struct {
+	component.Host
+	extensions map[component.ID]component.Component
+}
+
+func (f *fakeHostWithExtensions) GetExtensions() map[component.ID]component.Component {
+	return f.extensions
+}
+
+type wrongComponentType struct{}
+
+func (wrongComponentType) Start(context.Context, component.Host) error {
+	return nil
+}
+
+func (wrongComponentType) Shutdown(context.Context) error {
 	return nil
 }
 
@@ -436,4 +477,67 @@ func TestQueryService(t *testing.T) {
 	// Test QueryService method
 	qs := server.QueryService()
 	require.NotNil(t, qs, "QueryService should not be nil")
+}
+
+func TestRouteRegistrars(t *testing.T) {
+	telset := component.TelemetrySettings{
+		Logger: zaptest.NewLogger(t),
+	}
+	s := newServer(createDefaultConfig().(*Config), telset)
+	qs := &querysvc.QueryService{}
+
+	t.Run("ai extension not configured", func(t *testing.T) {
+		host := &fakeHostWithExtensions{
+			Host:       componenttest.NewNopHost(),
+			extensions: map[component.ID]component.Component{},
+		}
+		registrars, err := s.routeRegistrars(host, qs)
+		require.NoError(t, err)
+		require.Empty(t, registrars)
+	})
+
+	t.Run("ai extension configured", func(t *testing.T) {
+		aiExt := &fakeAIAnalysisExt{}
+		host := &fakeHostWithExtensions{
+			Host: componenttest.NewNopHost(),
+			extensions: map[component.ID]component.Component{
+				aianalysis.ID: aiExt,
+			},
+		}
+		registrars, err := s.routeRegistrars(host, qs)
+		require.NoError(t, err)
+		require.Len(t, registrars, 1)
+
+		err = registrars[0](mux.NewRouter())
+		require.NoError(t, err)
+		require.True(t, aiExt.called)
+		require.Equal(t, qs, aiExt.qs)
+	})
+
+	t.Run("ai extension type mismatch", func(t *testing.T) {
+		host := &fakeHostWithExtensions{
+			Host: componenttest.NewNopHost(),
+			extensions: map[component.ID]component.Component{
+				aianalysis.ID: wrongComponentType{},
+			},
+		}
+		registrars, err := s.routeRegistrars(host, qs)
+		require.Nil(t, registrars)
+		require.ErrorContains(t, err, "not of expected type")
+	})
+
+	t.Run("ai registrar error", func(t *testing.T) {
+		aiExt := &fakeAIAnalysisExt{registerErr: errors.New("register failed")}
+		host := &fakeHostWithExtensions{
+			Host: componenttest.NewNopHost(),
+			extensions: map[component.ID]component.Component{
+				aianalysis.ID: aiExt,
+			},
+		}
+		registrars, err := s.routeRegistrars(host, qs)
+		require.NoError(t, err)
+		require.Len(t, registrars, 1)
+		err = registrars[0](mux.NewRouter())
+		require.ErrorContains(t, err, "register failed")
+	})
 }

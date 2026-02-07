@@ -21,8 +21,6 @@ const (
 	QueryHTTP = 16686
 	// MCPHTTP is the default port for MCP (Model Context Protocol) server HTTP endpoint
 	MCPHTTP = 16687
-	// AIHTTP is the default port for AI extension HTTP endpoint
-	AIHTTP = 16688
 
 	// RemoteStorageGRPC is the default port of GRPC requests for Remote Storage
 	RemoteStorageGRPC = 17271
