@@ -55,5 +55,5 @@ func createDefaultConfig() component.Config {
 
 // createExtension creates the extension based on this config.
 func createExtension(_ context.Context, set extension.Settings, cfg component.Config) (extension.Extension, error) {
-	return newServer(cfg.(*Config), set.TelemetrySettings), nil
+	return newAIAnalysisExtension(cfg.(*Config), set.TelemetrySettings), nil
 }
