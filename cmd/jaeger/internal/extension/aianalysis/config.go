@@ -42,7 +42,7 @@ type OllamaConfig struct {
 	// BaseURL is the Ollama server URL (default: http://localhost:11434)
 	BaseURL string `mapstructure:"base_url"`
 
-	// Model is the Ollama model name (default: qwen2.5:7b)
+	// Model is the Ollama model name (default: qwen2.5:1.5b)
 	Model string `mapstructure:"model"`
 
 	// Temperature controls randomness (0.0-1.0, default: 0.1)
