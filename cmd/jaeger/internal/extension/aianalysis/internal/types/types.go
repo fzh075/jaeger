@@ -10,6 +10,24 @@ type NLSearchRequest struct {
 
 	// Language is the preferred language for the response (default: auto-detect)
 	Language string `json:"language,omitempty"`
+
+	// Candidates constrains model output to known UI options.
+	Candidates NLSearchCandidates `json:"candidates,omitempty"`
+}
+
+// NLSearchCandidates contains constrained options for NL search parsing.
+type NLSearchCandidates struct {
+	// Services is the list of selectable services in UI.
+	Services []string `json:"services,omitempty"`
+
+	// Operations is the list of selectable operations for current service.
+	Operations []string `json:"operations,omitempty"`
+
+	// Lookbacks is the list of selectable lookback options in UI.
+	Lookbacks []string `json:"lookbacks,omitempty"`
+
+	// TagKeys is the list of allowed tag keys.
+	TagKeys []string `json:"tag_keys,omitempty"`
 }
 
 // NLSearchResponse represents the response from natural language search.
@@ -38,8 +56,8 @@ type ParsedQuery struct {
 	// DurationMax is the maximum duration filter
 	DurationMax string `json:"duration_max,omitempty"`
 
-	// HasErrors indicates whether to filter for error spans
-	HasErrors bool `json:"has_errors,omitempty"`
+	// Lookback is the relative time range option (e.g. "1h", "24h", "custom").
+	Lookback string `json:"lookback,omitempty"`
 
 	// StartTimeMin is the minimum start time (relative or absolute)
 	StartTimeMin string `json:"start_time_min,omitempty"`

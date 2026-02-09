@@ -61,7 +61,7 @@ func (h *NLSearchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	var response types.NLSearchResponse
 	err := h.base.runWithRetry(ctx, func(callCtx context.Context) error {
 		var callErr error
-		response, callErr = h.chain.Parse(callCtx, req.Query)
+		response, callErr = h.chain.Parse(callCtx, req)
 		return callErr
 	})
 	if err != nil {
