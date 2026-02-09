@@ -32,6 +32,9 @@ type LLMConfig struct {
 
 	// OpenAI contains OpenAI-specific configuration.
 	OpenAI *OpenAIConfig `mapstructure:"openai,omitempty"`
+
+	// Anthropic contains Anthropic-specific configuration.
+	Anthropic *AnthropicConfig `mapstructure:"anthropic,omitempty"`
 }
 
 // OllamaConfig contains configuration for Ollama LLM provider.
@@ -67,6 +70,24 @@ type OpenAIConfig struct {
 	MaxTokens int `mapstructure:"max_tokens" valid:"range(1|128000)"`
 }
 
+// AnthropicConfig contains configuration for Anthropic LLM provider.
+type AnthropicConfig struct {
+	// APIKey is the Anthropic API key. If empty, provider may use ANTHROPIC_API_KEY.
+	APIKey string `mapstructure:"api_key"`
+
+	// BaseURL is the Anthropic API base URL (optional, for custom endpoints).
+	BaseURL string `mapstructure:"base_url,omitempty"`
+
+	// Model is the Anthropic model name (default: claude-3-5-sonnet-latest).
+	Model string `mapstructure:"model"`
+
+	// Temperature controls randomness (0.0-1.0, default: 0.1).
+	Temperature float64 `mapstructure:"temperature" valid:"range(0|1)"`
+
+	// MaxTokens limits response length.
+	MaxTokens int `mapstructure:"max_tokens" valid:"range(1|200000)"`
+}
+
 // FeaturesConfig enables/disables specific AI Analysis features.
 type FeaturesConfig struct {
 	// NLSearch enables natural language trace search
@@ -84,6 +105,18 @@ type PerformanceConfig struct {
 	//
 	// RequestTimeout is the maximum time for AI requests TODO(fzh075)
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+
+	// MaxRequestBodyBytes limits request body size for AI endpoints.
+	MaxRequestBodyBytes int64 `mapstructure:"max_request_body_bytes" valid:"range(1024|10485760)"`
+
+	// MaxSpansPerClassify limits how many spans can be classified in one request.
+	MaxSpansPerClassify int `mapstructure:"max_spans_per_classify" valid:"range(1|2000)"`
+
+	// MaxConcurrentRequests limits concurrent AI requests.
+	MaxConcurrentRequests int `mapstructure:"max_concurrent_requests" valid:"range(1|1024)"`
+
+	// RetryAttempts controls retry count for transient provider errors.
+	RetryAttempts int `mapstructure:"retry_attempts" valid:"range(0|5)"`
 
 	// StreamingEnabled enables SSE streaming for long responses
 	StreamingEnabled bool `mapstructure:"streaming_enabled"`
@@ -111,6 +144,26 @@ func (cfg *Config) Validate() error {
 			Temperature: 0.1,
 			MaxTokens:   4096,
 		}
+	}
+	if cfg.LLM.Provider == "anthropic" && cfg.LLM.Anthropic == nil {
+		cfg.LLM.Anthropic = &AnthropicConfig{
+			Model:       "claude-3-5-sonnet-latest",
+			Temperature: 0.1,
+			MaxTokens:   4096,
+		}
+	}
+
+	if cfg.Performance.RequestTimeout == 0 {
+		cfg.Performance.RequestTimeout = 30 * time.Second
+	}
+	if cfg.Performance.MaxRequestBodyBytes == 0 {
+		cfg.Performance.MaxRequestBodyBytes = 256 * 1024
+	}
+	if cfg.Performance.MaxSpansPerClassify == 0 {
+		cfg.Performance.MaxSpansPerClassify = 200
+	}
+	if cfg.Performance.MaxConcurrentRequests == 0 {
+		cfg.Performance.MaxConcurrentRequests = 16
 	}
 
 	_, err := govalidator.ValidateStruct(cfg)

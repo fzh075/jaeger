@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
@@ -80,7 +81,7 @@ func TestExplainerChainParseResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := chain.parseResponse(tt.response)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.want.Summary, got.Summary)
 			assert.Equal(t, tt.want.Explanation, got.Explanation)
 		})

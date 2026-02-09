@@ -32,7 +32,7 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.NotNil(t, config.LLM.Ollama)
 	assert.Equal(t, "http://localhost:11434", config.LLM.Ollama.BaseURL)
 	assert.Equal(t, "qwen2.5:1.5b", config.LLM.Ollama.Model)
-	assert.Equal(t, 0.1, config.LLM.Ollama.Temperature)
+	assert.InDelta(t, 0.1, config.LLM.Ollama.Temperature, 0.00001)
 	assert.Equal(t, 2048, config.LLM.Ollama.MaxTokens)
 
 	// Check features
@@ -42,6 +42,10 @@ func TestCreateDefaultConfig(t *testing.T) {
 
 	// Check performance
 	assert.Equal(t, 30*time.Second, config.Performance.RequestTimeout)
+	assert.EqualValues(t, 256*1024, config.Performance.MaxRequestBodyBytes)
+	assert.Equal(t, 200, config.Performance.MaxSpansPerClassify)
+	assert.Equal(t, 16, config.Performance.MaxConcurrentRequests)
+	assert.Equal(t, 0, config.Performance.RetryAttempts)
 	assert.True(t, config.Performance.StreamingEnabled)
 }
 

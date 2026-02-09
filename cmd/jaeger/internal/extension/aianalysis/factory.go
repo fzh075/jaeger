@@ -45,10 +45,14 @@ func createDefaultConfig() component.Config {
 			SmartFilter:     true,
 		},
 		Performance: PerformanceConfig{
-			RequestTimeout:   30 * time.Second,
-			StreamingEnabled: true,
-			CacheEnabled:     false,
-			CacheTTL:         5 * time.Minute,
+			RequestTimeout:        30 * time.Second,
+			MaxRequestBodyBytes:   256 * 1024,
+			MaxSpansPerClassify:   200,
+			MaxConcurrentRequests: 16,
+			RetryAttempts:         0,
+			StreamingEnabled:      true,
+			CacheEnabled:          false,
+			CacheTTL:              5 * time.Minute,
 		},
 	}
 }

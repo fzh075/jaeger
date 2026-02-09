@@ -6,7 +6,6 @@ package aianalysis
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/extension"
+
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/httpapi"
 )
 
 type fakeExtension struct {
@@ -67,7 +68,7 @@ func TestGetExtension(t *testing.T) {
 		ext, err := GetExtension(host)
 		require.Nil(t, ext)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ErrExtensionNotConfigured))
+		require.ErrorIs(t, err, ErrExtensionNotConfigured)
 	})
 
 	t.Run("wrong type", func(t *testing.T) {
@@ -85,22 +86,24 @@ func TestHandleCapabilities(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	ext := newAIAnalysisExtension(cfg, component.TelemetrySettings{})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", http.NoBody)
 	w := httptest.NewRecorder()
 
 	ext.handleCapabilities(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var result CapabilitiesResponse
+	var result httpapi.SuccessResponse[CapabilitiesResponse]
 	err := json.NewDecoder(w.Body).Decode(&result)
 	require.NoError(t, err)
-	assert.True(t, result.NLSearch)
-	assert.True(t, result.SpanExplanation)
-	assert.True(t, result.SmartFilter)
-	assert.True(t, result.Streaming)
-	assert.Equal(t, "ollama", result.Provider)
-	assert.Equal(t, "qwen2.5:1.5b", result.Model)
+	assert.True(t, result.Data.Features.NLSearch)
+	assert.True(t, result.Data.Features.SpanExplanation)
+	assert.True(t, result.Data.Features.SmartFilter)
+	assert.True(t, result.Data.Streaming)
+	assert.Equal(t, "ollama", result.Data.Provider)
+	assert.Equal(t, "qwen2.5:1.5b", result.Data.Model)
+	assert.Equal(t, int64(30_000), result.Data.RequestTimeoutMS)
+	assert.Equal(t, int64(256*1024), result.Data.MaxInputBytes)
 }
 
 func TestRegisterRoutes(t *testing.T) {
@@ -111,7 +114,7 @@ func TestRegisterRoutes(t *testing.T) {
 	err := ext.RegisterRoutes(router)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ai-analysis/capabilities", http.NoBody)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -137,7 +140,7 @@ func TestRegisterRoutesFeatureGate(t *testing.T) {
 	err := ext.RegisterRoutes(router)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/search", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/ai-analysis/nl-search/parse", http.NoBody)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)

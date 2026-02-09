@@ -88,6 +88,7 @@ func (p *OllamaProvider) GenerateStream(ctx context.Context, prompt string, hand
 
 // Close releases resources (no-op for Ollama).
 func (p *OllamaProvider) Close() error {
+	_ = p
 	return nil
 }
 

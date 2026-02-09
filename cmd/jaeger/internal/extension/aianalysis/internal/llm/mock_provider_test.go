@@ -47,6 +47,7 @@ func (m *MockProvider) GenerateStream(_ context.Context, prompt string, handler 
 }
 
 func (m *MockProvider) Close() error {
+	_ = m
 	return nil
 }
 

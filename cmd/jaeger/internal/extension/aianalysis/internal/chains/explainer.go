@@ -68,25 +68,43 @@ func NewExplainerChain(provider llm.Provider) *ExplainerChain {
 
 // Explain generates an explanation for a span.
 func (c *ExplainerChain) Explain(ctx context.Context, req types.SpanExplainRequest) (types.SpanExplainResponse, error) {
+	if c.provider == nil {
+		return types.SpanExplainResponse{}, ErrProviderUnavailable
+	}
+
 	prompt := c.buildPrompt(req)
 
 	response, err := c.provider.Generate(ctx, prompt)
 	if err != nil {
-		return types.SpanExplainResponse{
-			Error: fmt.Sprintf("LLM generation failed: %v", err),
-		}, nil
+		return types.SpanExplainResponse{}, fmt.Errorf("%w: %w", ErrLLMGeneration, err)
 	}
 
-	return c.parseResponse(response)
+	parsed, err := c.parseResponse(response)
+	if err != nil {
+		return types.SpanExplainResponse{}, err
+	}
+	if strings.TrimSpace(parsed.Explanation) == "" {
+		return types.SpanExplainResponse{}, fmt.Errorf("%w: empty explanation", ErrInvalidLLMResponse)
+	}
+	return parsed, nil
 }
 
 // ExplainStream generates an explanation with streaming response.
 func (c *ExplainerChain) ExplainStream(ctx context.Context, req types.SpanExplainRequest, handler llm.StreamHandler) error {
+	if c.provider == nil {
+		return ErrProviderUnavailable
+	}
+
 	prompt := c.buildPrompt(req)
-	return c.provider.GenerateStream(ctx, prompt, handler)
+	if err := c.provider.GenerateStream(ctx, prompt, handler); err != nil {
+		return fmt.Errorf("%w: %w", ErrLLMGeneration, err)
+	}
+	return nil
 }
 
 func (c *ExplainerChain) buildPrompt(req types.SpanExplainRequest) string {
+	_ = c
+
 	span := req.SpanData
 
 	attrs, _ := json.Marshal(span.Attributes)
@@ -117,6 +135,8 @@ func (c *ExplainerChain) buildPrompt(req types.SpanExplainRequest) string {
 }
 
 func (c *ExplainerChain) parseResponse(response string) (types.SpanExplainResponse, error) {
+	_ = c
+
 	jsonStr := extractJSON(response)
 
 	var result struct {
@@ -126,7 +146,7 @@ func (c *ExplainerChain) parseResponse(response string) (types.SpanExplainRespon
 		Suggestions    []string `json:"suggestions"`
 	}
 
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+	if !decodeExplainResponse(jsonStr, &result) {
 		// If JSON parsing fails, use raw response as explanation
 		return types.SpanExplainResponse{
 			Explanation: strings.TrimSpace(response),
@@ -139,4 +159,8 @@ func (c *ExplainerChain) parseResponse(response string) (types.SpanExplainRespon
 		PossibleCauses: result.PossibleCauses,
 		Suggestions:    result.Suggestions,
 	}, nil
+}
+
+func decodeExplainResponse(jsonStr string, out any) bool {
+	return json.Unmarshal([]byte(jsonStr), out) == nil
 }

@@ -4,115 +4,115 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/chains"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/httpapi"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
 
 // ExplainHandler handles span explanation requests.
 type ExplainHandler struct {
-	chain  *chains.ExplainerChain
-	logger *zap.Logger
+	chain *chains.ExplainerChain
+	base  baseHandler
 }
 
 // NewExplainHandler creates a new explain handler.
-func NewExplainHandler(provider llm.Provider, logger *zap.Logger) *ExplainHandler {
+func NewExplainHandler(provider llm.Provider, logger *zap.Logger, options ...HandlerOptions) *ExplainHandler {
+	var opt HandlerOptions
+	if len(options) > 0 {
+		opt = options[0]
+	}
 	return &ExplainHandler{
-		chain:  chains.NewExplainerChain(provider),
-		logger: logger,
+		chain: chains.NewExplainerChain(provider),
+		base:  newBaseHandler(provider, logger, opt),
 	}
 }
 
-// Handle processes non-streaming span explanation requests.
+// Handle processes span explanation requests.
+// For streaming responses, clients should send Accept: text/event-stream.
 func (h *ExplainHandler) Handle(w http.ResponseWriter, r *http.Request) {
+	if !h.base.tryAcquire(w) {
+		return
+	}
+	defer h.base.release()
+
 	var req types.SpanExplainRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.sendError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+	if ok := h.base.decodeJSON(w, r, &req); !ok {
 		return
 	}
 
+	req.SpanData.SpanID = strings.TrimSpace(req.SpanData.SpanID)
 	if req.SpanData.SpanID == "" {
-		h.sendError(w, http.StatusBadRequest, "span_data.span_id is required")
+		httpapi.WriteError(w, http.StatusBadRequest, errCodeInvalidRequest, "span_data.span_id is required", nil)
 		return
 	}
 
-	h.logger.Info("Processing span explanation request",
+	start := time.Now()
+	ctx, cancel := h.base.withTimeout(r.Context())
+	defer cancel()
+
+	h.base.logger.Info("Processing span explanation request",
 		zap.String("span_id", req.SpanData.SpanID),
-		zap.String("service", req.SpanData.ServiceName))
+		zap.String("service", req.SpanData.ServiceName),
+	)
 
-	response, err := h.chain.Explain(r.Context(), req)
-	if err != nil {
-		h.logger.Error("Span explanation failed", zap.Error(err))
-		h.sendError(w, http.StatusInternalServerError, "Failed to explain span: "+err.Error())
+	wantsStream := strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/event-stream")
+	if wantsStream {
+		if !h.base.options.StreamingEnabled {
+			httpapi.WriteError(w, http.StatusBadRequest, errCodeStreamingNotEnabled, "streaming is disabled by configuration", nil)
+			return
+		}
+		h.handleStream(ctx, w, req, start)
 		return
 	}
 
-	if response.Error != "" {
-		h.logger.Warn("Span explanation returned error", zap.String("error", response.Error))
+	var response types.SpanExplainResponse
+	err := h.base.runWithRetry(ctx, func(callCtx context.Context) error {
+		var callErr error
+		response, callErr = h.chain.Explain(callCtx, req)
+		return callErr
+	})
+	if err != nil {
+		h.base.logger.Error("Span explanation failed", zap.Error(err))
+		h.base.writeErrorFromErr(w, err, "Failed to explain span")
+		return
 	}
 
-	h.sendJSON(w, http.StatusOK, response)
+	httpapi.WriteData(w, http.StatusOK, response, h.base.responseMeta(start))
 }
 
-// HandleStream processes streaming span explanation requests using SSE.
-func (h *ExplainHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
-	var req types.SpanExplainRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.sendError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+func (h *ExplainHandler) handleStream(ctx context.Context, w http.ResponseWriter, req types.SpanExplainRequest, start time.Time) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		httpapi.WriteError(w, http.StatusInternalServerError, errCodeStreamingUnsupported, "streaming is not supported by this response writer", nil)
 		return
 	}
 
-	if req.SpanData.SpanID == "" {
-		h.sendError(w, http.StatusBadRequest, "span_data.span_id is required")
-		return
-	}
-
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		h.sendError(w, http.StatusInternalServerError, "Streaming not supported")
-		return
-	}
-
-	h.logger.Info("Processing streaming span explanation request",
-		zap.String("span_id", req.SpanData.SpanID))
-
-	err := h.chain.ExplainStream(r.Context(), req, func(chunk string) error {
-		_, err := fmt.Fprintf(w, "data: %s\n\n", chunk)
-		if err != nil {
-			return err
-		}
-		flusher.Flush()
-		return nil
+	err := h.chain.ExplainStream(ctx, req, func(chunk string) error {
+		return h.base.writeSSEEvent(w, "message", map[string]string{"chunk": chunk})
 	})
-
 	if err != nil {
-		h.logger.Error("Streaming explanation failed", zap.Error(err))
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		h.base.logger.Error("Streaming explanation failed", zap.Error(err))
+		h.base.writeSSEError(w, errCodeLLMGenerationFailed, "Failed to stream span explanation", map[string]any{
+			"cause": err.Error(),
+		})
 		flusher.Flush()
 		return
 	}
 
-	fmt.Fprint(w, "event: done\ndata: {}\n\n")
+	_ = h.base.writeSSEEvent(w, "done", map[string]any{
+		"meta": h.base.responseMeta(start),
+	})
 	flusher.Flush()
-}
-
-func (h *ExplainHandler) sendJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
-}
-
-func (h *ExplainHandler) sendError(w http.ResponseWriter, status int, message string) {
-	h.sendJSON(w, status, map[string]string{"error": message})
 }

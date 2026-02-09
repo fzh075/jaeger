@@ -966,7 +966,7 @@ func TestInitRouterWithExtraRouteRegistrars(t *testing.T) {
 	})
 	require.True(t, called)
 
-	req := httptest.NewRequest(http.MethodGet, "/extra", nil)
+	req := httptest.NewRequest(http.MethodGet, "/extra", http.NoBody)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)

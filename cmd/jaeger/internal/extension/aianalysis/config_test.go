@@ -47,6 +47,21 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid anthropic config",
+			config: Config{
+				LLM: LLMConfig{
+					Provider: "anthropic",
+					Anthropic: &AnthropicConfig{
+						APIKey:      "anthropic-key",
+						Model:       "claude-3-5-sonnet-latest",
+						Temperature: 0.1,
+						MaxTokens:   4096,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "ollama config auto-created when nil",
 			config: Config{
 				LLM: LLMConfig{
@@ -72,6 +87,18 @@ func TestConfigValidate(t *testing.T) {
 					Ollama: &OllamaConfig{
 						Temperature: 2.0, // Out of range for ollama (0-1)
 					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid max request body bytes",
+			config: Config{
+				LLM: LLMConfig{
+					Provider: "ollama",
+				},
+				Performance: PerformanceConfig{
+					MaxRequestBodyBytes: 32,
 				},
 			},
 			wantErr: true,
@@ -102,4 +129,8 @@ func TestConfigValidateAutoCreateOllama(t *testing.T) {
 	require.NotNil(t, cfg.LLM.Ollama)
 	assert.Equal(t, "http://localhost:11434", cfg.LLM.Ollama.BaseURL)
 	assert.Equal(t, "qwen2.5:1.5b", cfg.LLM.Ollama.Model)
+	assert.Equal(t, 30_000, int(cfg.Performance.RequestTimeout.Milliseconds()))
+	assert.EqualValues(t, 256*1024, cfg.Performance.MaxRequestBodyBytes)
+	assert.Equal(t, 200, cfg.Performance.MaxSpansPerClassify)
+	assert.Equal(t, 16, cfg.Performance.MaxConcurrentRequests)
 }

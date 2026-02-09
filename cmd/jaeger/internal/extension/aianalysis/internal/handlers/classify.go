@@ -4,66 +4,79 @@
 package handlers
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/chains"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/httpapi"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
 
 // ClassifyHandler handles span classification requests.
 type ClassifyHandler struct {
-	chain  *chains.ClassifierChain
-	logger *zap.Logger
+	chain *chains.ClassifierChain
+	base  baseHandler
 }
 
 // NewClassifyHandler creates a new classify handler.
-func NewClassifyHandler(provider llm.Provider, logger *zap.Logger) *ClassifyHandler {
+func NewClassifyHandler(provider llm.Provider, logger *zap.Logger, options ...HandlerOptions) *ClassifyHandler {
+	var opt HandlerOptions
+	if len(options) > 0 {
+		opt = options[0]
+	}
 	return &ClassifyHandler{
-		chain:  chains.NewClassifierChain(provider),
-		logger: logger,
+		chain: chains.NewClassifierChain(provider),
+		base:  newBaseHandler(provider, logger, opt),
 	}
 }
 
 // Handle processes span classification requests.
 func (h *ClassifyHandler) Handle(w http.ResponseWriter, r *http.Request) {
+	if !h.base.tryAcquire(w) {
+		return
+	}
+	defer h.base.release()
+
 	var req types.ClassifyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.sendError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+	if ok := h.base.decodeJSON(w, r, &req); !ok {
 		return
 	}
 
 	if len(req.Spans) == 0 {
-		h.sendError(w, http.StatusBadRequest, "At least one span is required")
+		httpapi.WriteError(w, http.StatusBadRequest, errCodeInvalidRequest, "at least one span is required", nil)
+		return
+	}
+	if len(req.Spans) > h.base.options.MaxSpansPerClassify {
+		httpapi.WriteError(w, http.StatusBadRequest, errCodeInvalidRequest, "too many spans in one request", map[string]any{
+			"span_count":             len(req.Spans),
+			"max_spans_per_classify": h.base.options.MaxSpansPerClassify,
+		})
 		return
 	}
 
-	h.logger.Info("Processing span classification request",
-		zap.Int("span_count", len(req.Spans)))
+	start := time.Now()
+	ctx, cancel := h.base.withTimeout(r.Context())
+	defer cancel()
 
-	response, err := h.chain.Classify(r.Context(), req.Spans)
+	h.base.logger.Info("Processing span classification request",
+		zap.Int("span_count", len(req.Spans)),
+	)
+
+	var response types.ClassifyResponse
+	err := h.base.runWithRetry(ctx, func(callCtx context.Context) error {
+		var callErr error
+		response, callErr = h.chain.Classify(callCtx, req.Spans)
+		return callErr
+	})
 	if err != nil {
-		h.logger.Error("Span classification failed", zap.Error(err))
-		h.sendError(w, http.StatusInternalServerError, "Failed to classify spans: "+err.Error())
+		h.base.logger.Error("Span classification failed", zap.Error(err))
+		h.base.writeErrorFromErr(w, err, "Failed to classify spans")
 		return
 	}
 
-	if response.Error != "" {
-		h.logger.Warn("Span classification returned error", zap.String("error", response.Error))
-	}
-
-	h.sendJSON(w, http.StatusOK, response)
-}
-
-func (h *ClassifyHandler) sendJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
-}
-
-func (h *ClassifyHandler) sendError(w http.ResponseWriter, status int, message string) {
-	h.sendJSON(w, status, map[string]string{"error": message})
+	httpapi.WriteData(w, http.StatusOK, response, h.base.responseMeta(start))
 }

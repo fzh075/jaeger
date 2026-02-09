@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
@@ -73,10 +74,11 @@ func TestClassifierChainParseResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := chain.parseResponse(tt.response)
+			got, err := chain.parseResponse(tt.response)
 			if tt.wantErr {
-				assert.NotEmpty(t, got.Error)
+				assert.Error(t, err)
 			} else {
+				require.NoError(t, err)
 				assert.Len(t, got.Classifications, tt.wantLen)
 			}
 		})
@@ -88,9 +90,10 @@ func TestClassifierChainParseResponseWithCodeBlock(t *testing.T) {
 
 	response := "```json\n[{\"span_id\":\"span1\",\"category\":\"error\",\"is_noise\":false,\"importance\":1.0,\"reason\":\"Error span\"}]\n```"
 
-	got, _ := chain.parseResponse(response)
+	got, err := chain.parseResponse(response)
+	require.NoError(t, err)
 
 	assert.Len(t, got.Classifications, 1)
 	assert.Equal(t, "error", got.Classifications["span1"].Category)
-	assert.Equal(t, 1.0, got.Classifications["span1"].Importance)
+	assert.InDelta(t, 1.0, got.Classifications["span1"].Importance, 0.00001)
 }

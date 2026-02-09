@@ -95,6 +95,7 @@ func (p *OpenAIProvider) GenerateStream(ctx context.Context, prompt string, hand
 
 // Close releases resources (no-op for OpenAI).
 func (p *OpenAIProvider) Close() error {
+	_ = p
 	return nil
 }
 

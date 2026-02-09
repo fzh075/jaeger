@@ -66,20 +66,40 @@ func (c *ClassifierChain) Classify(ctx context.Context, spans []types.SpanData) 
 			Classifications: make(map[string]types.SpanClassification),
 		}, nil
 	}
+	if c.provider == nil {
+		return types.ClassifyResponse{}, ErrProviderUnavailable
+	}
 
 	prompt := c.buildPrompt(spans)
 
 	response, err := c.provider.Generate(ctx, prompt)
 	if err != nil {
-		return types.ClassifyResponse{
-			Error: fmt.Sprintf("LLM generation failed: %v", err),
-		}, nil
+		return types.ClassifyResponse{}, fmt.Errorf("%w: %w", ErrLLMGeneration, err)
 	}
 
-	return c.parseResponse(response)
+	classified, err := c.parseResponse(response)
+	if err != nil {
+		return types.ClassifyResponse{}, err
+	}
+
+	// Ensure every input span has a deterministic fallback classification.
+	for i := range spans {
+		span := spans[i]
+		if span.SpanID == "" {
+			continue
+		}
+		if _, ok := classified.Classifications[span.SpanID]; ok {
+			continue
+		}
+		classified.Classifications[span.SpanID] = fallbackClassification(span)
+	}
+
+	return classified, nil
 }
 
 func (c *ClassifierChain) buildPrompt(spans []types.SpanData) string {
+	_ = c
+
 	// Build compact span descriptions
 	type compactSpan struct {
 		SpanID        string            `json:"span_id"`
@@ -91,7 +111,8 @@ func (c *ClassifierChain) buildPrompt(spans []types.SpanData) string {
 	}
 
 	compactSpans := make([]compactSpan, len(spans))
-	for i, span := range spans {
+	for i := range spans {
+		span := spans[i]
 		compactSpans[i] = compactSpan{
 			SpanID:        span.SpanID,
 			ServiceName:   span.ServiceName,
@@ -107,6 +128,8 @@ func (c *ClassifierChain) buildPrompt(spans []types.SpanData) string {
 }
 
 func (c *ClassifierChain) parseResponse(response string) (types.ClassifyResponse, error) {
+	_ = c
+
 	jsonStr := extractJSON(response)
 
 	var results []struct {
@@ -118,13 +141,14 @@ func (c *ClassifierChain) parseResponse(response string) (types.ClassifyResponse
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &results); err != nil {
-		return types.ClassifyResponse{
-			Error: fmt.Sprintf("Failed to parse classification response: %v", err),
-		}, nil
+		return types.ClassifyResponse{}, fmt.Errorf("%w: %w", ErrInvalidLLMResponse, err)
 	}
 
 	classifications := make(map[string]types.SpanClassification)
 	for _, r := range results {
+		if r.SpanID == "" {
+			continue
+		}
 		classifications[r.SpanID] = types.SpanClassification{
 			Category:   r.Category,
 			IsNoise:    r.IsNoise,
@@ -136,4 +160,21 @@ func (c *ClassifierChain) parseResponse(response string) (types.ClassifyResponse
 	return types.ClassifyResponse{
 		Classifications: classifications,
 	}, nil
+}
+
+func fallbackClassification(span types.SpanData) types.SpanClassification {
+	if span.Status == "ERROR" {
+		return types.SpanClassification{
+			Category:   "error",
+			IsNoise:    false,
+			Importance: 1.0,
+			Reason:     "Fallback classification due to missing model output; ERROR status is critical.",
+		}
+	}
+	return types.SpanClassification{
+		Category:   "business",
+		IsNoise:    false,
+		Importance: 0.5,
+		Reason:     "Fallback classification due to missing model output.",
+	}
 }

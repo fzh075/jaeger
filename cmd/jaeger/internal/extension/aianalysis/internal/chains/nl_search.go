@@ -36,22 +36,23 @@ OUTPUT FORMAT (JSON only, no explanation):
   "start_time_max": "string or empty",
   "attributes": {"key": "value"} or {},
   "limit": number,
-  "confidence": 0.0-1.0
+  "confidence": 0.0-1.0,
+  "explanation": "optional short reasoning"
 }
 
 EXAMPLES:
 
 Query: "Show me 500 errors from payment-service > 2s"
-{"service_name": "payment-service", "span_name": "", "duration_min": "2s", "duration_max": "", "has_errors": false, "attributes": {"http.status_code": "500"}, "limit": 20}
+{"service_name": "payment-service", "span_name": "", "duration_min": "2s", "duration_max": "", "has_errors": true, "attributes": {"http.status_code": "500"}, "limit": 20, "confidence": 0.92, "explanation": "HTTP 500 implies errors with lower-bound latency"}
 
 Query: "frontend service last 1 hour errors"
-{"service_name": "frontend", "span_name": "", "duration_min": "", "duration_max": "", "has_errors": true, "start_time_min": "-1h", "attributes": {}, "limit": 20}
+{"service_name": "frontend", "span_name": "", "duration_min": "", "duration_max": "", "has_errors": true, "start_time_min": "-1h", "attributes": {}, "limit": 20, "confidence": 0.9, "explanation": ""}
 
 Query: "Find checkout operation taking between 500ms and 1s"
-{"service_name": "", "span_name": "checkout", "duration_min": "500ms", "duration_max": "1s", "has_errors": false, "attributes": {}, "limit": 20}
+{"service_name": "", "span_name": "checkout", "duration_min": "500ms", "duration_max": "1s", "has_errors": false, "attributes": {}, "limit": 20, "confidence": 0.88, "explanation": ""}
 
 Query: "mysql queries in order-service"
-{"service_name": "order-service", "span_name": "", "duration_min": "", "duration_max": "", "has_errors": false, "attributes": {"db.system": "mysql"}, "limit": 20}
+{"service_name": "order-service", "span_name": "", "duration_min": "", "duration_max": "", "has_errors": false, "attributes": {"db.system": "mysql"}, "limit": 20, "confidence": 0.83, "explanation": ""}
 
 Now parse this query:
 Query: "%s"
@@ -70,18 +71,21 @@ func NewNLSearchChain(provider llm.Provider) *NLSearchChain {
 // ParsedQueryWithConfidence extends ParsedQuery with confidence.
 type ParsedQueryWithConfidence struct {
 	types.ParsedQuery
-	Confidence float64 `json:"confidence"`
+	Confidence  float64 `json:"confidence"`
+	Explanation string  `json:"explanation"`
 }
 
 // Parse converts a natural language query to structured search parameters.
 func (c *NLSearchChain) Parse(ctx context.Context, query string) (types.NLSearchResponse, error) {
+	if c.provider == nil {
+		return types.NLSearchResponse{}, ErrProviderUnavailable
+	}
+
 	prompt := fmt.Sprintf(nlSearchPromptTemplate, query)
 
 	response, err := c.provider.Generate(ctx, prompt)
 	if err != nil {
-		return types.NLSearchResponse{
-			Error: fmt.Sprintf("LLM generation failed: %v", err),
-		}, nil
+		return types.NLSearchResponse{}, fmt.Errorf("%w: %w", ErrLLMGeneration, err)
 	}
 
 	// TODO(fzh075)
@@ -95,14 +99,23 @@ func (c *NLSearchChain) Parse(ctx context.Context, query string) (types.NLSearch
 
 	var parsed ParsedQueryWithConfidence
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
-		return types.NLSearchResponse{
-			Error: fmt.Sprintf("Failed to parse LLM response: %v", err),
-		}, nil
+		return types.NLSearchResponse{}, fmt.Errorf("%w: %w", ErrInvalidLLMResponse, err)
+	}
+
+	if parsed.Confidence < 0 || parsed.Confidence > 1 {
+		parsed.Confidence = 0.5
+	}
+	if parsed.ParsedQuery.Attributes == nil {
+		parsed.ParsedQuery.Attributes = map[string]string{}
+	}
+	if parsed.ParsedQuery.Limit <= 0 {
+		parsed.ParsedQuery.Limit = 20
 	}
 
 	return types.NLSearchResponse{
 		ParsedQuery: parsed.ParsedQuery,
 		Confidence:  parsed.Confidence,
+		Explanation: parsed.Explanation,
 	}, nil
 }
 

@@ -118,10 +118,12 @@ type fakeAIAnalysisExt struct {
 }
 
 func (f *fakeAIAnalysisExt) Start(context.Context, component.Host) error {
+	_ = f
 	return nil
 }
 
 func (f *fakeAIAnalysisExt) Shutdown(context.Context) error {
+	_ = f
 	return nil
 }
 

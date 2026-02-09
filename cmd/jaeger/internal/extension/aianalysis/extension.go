@@ -5,7 +5,6 @@ package aianalysis
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/handlers"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/httpapi"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
 )
 
@@ -39,6 +39,7 @@ type aiAnalysisExtension struct {
 	config      *Config
 	telset      component.TelemetrySettings
 	llmProvider llm.Provider
+	requestSem  chan struct{}
 	initErr     error
 	initOnce    sync.Once
 }
@@ -48,9 +49,14 @@ func newAIAnalysisExtension(config *Config, telset component.TelemetrySettings) 
 	if telset.Logger == nil {
 		telset.Logger = zap.NewNop()
 	}
+	maxConcurrent := config.Performance.MaxConcurrentRequests
+	if maxConcurrent <= 0 {
+		maxConcurrent = 16
+	}
 	return &aiAnalysisExtension{
-		config: config,
-		telset: telset,
+		config:     config,
+		telset:     telset,
+		requestSem: make(chan struct{}, maxConcurrent),
 	}
 }
 
@@ -91,20 +97,30 @@ func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
 
 	router.HandleFunc("/api/ai-analysis/capabilities", s.handleCapabilities).Methods(http.MethodGet)
 
+	opts := handlers.HandlerOptions{
+		ProviderName:         s.config.LLM.Provider,
+		RequestTimeout:       s.config.Performance.RequestTimeout,
+		MaxRequestBodyBytes:  s.config.Performance.MaxRequestBodyBytes,
+		MaxSpansPerClassify:  s.config.Performance.MaxSpansPerClassify,
+		MaxConcurrentRequest: s.config.Performance.MaxConcurrentRequests,
+		RetryAttempts:        s.config.Performance.RetryAttempts,
+		StreamingEnabled:     s.config.Performance.StreamingEnabled,
+		ConcurrencyLimiter:   s.requestSem,
+	}
+
 	if s.config.Features.NLSearch {
-		nlSearchHandler := handlers.NewNLSearchHandler(s.llmProvider, s.telset.Logger)
-		router.HandleFunc("/api/ai-analysis/search", nlSearchHandler.Handle).Methods(http.MethodPost)
+		nlSearchHandler := handlers.NewNLSearchHandler(s.llmProvider, s.telset.Logger, opts)
+		router.HandleFunc("/api/ai-analysis/nl-search/parse", nlSearchHandler.Handle).Methods(http.MethodPost)
 	}
 
 	if s.config.Features.SpanExplanation {
-		explainHandler := handlers.NewExplainHandler(s.llmProvider, s.telset.Logger)
-		router.HandleFunc("/api/ai-analysis/explain/span", explainHandler.Handle).Methods(http.MethodPost)
-		router.HandleFunc("/api/ai-analysis/explain/span/stream", explainHandler.HandleStream).Methods(http.MethodPost)
+		explainHandler := handlers.NewExplainHandler(s.llmProvider, s.telset.Logger, opts)
+		router.HandleFunc("/api/ai-analysis/spans/explain", explainHandler.Handle).Methods(http.MethodPost)
 	}
 
 	if s.config.Features.SmartFilter {
-		classifyHandler := handlers.NewClassifyHandler(s.llmProvider, s.telset.Logger)
-		router.HandleFunc("/api/ai-analysis/classify", classifyHandler.Handle).Methods(http.MethodPost)
+		classifyHandler := handlers.NewClassifyHandler(s.llmProvider, s.telset.Logger, opts)
+		router.HandleFunc("/api/ai-analysis/spans/classify", classifyHandler.Handle).Methods(http.MethodPost)
 	}
 
 	s.telset.Logger.Info("AI Analysis routes registered",
@@ -151,19 +167,37 @@ func (s *aiAnalysisExtension) createLLMProvider() (llm.Provider, error) {
 			Temperature: s.config.LLM.OpenAI.Temperature,
 			MaxTokens:   s.config.LLM.OpenAI.MaxTokens,
 		})
+	case "anthropic":
+		if s.config.LLM.Anthropic == nil {
+			return nil, errors.New("anthropic configuration is required when provider is anthropic")
+		}
+		return llm.NewAnthropicProvider(llm.AnthropicOptions{
+			APIKey:      s.config.LLM.Anthropic.APIKey,
+			BaseURL:     s.config.LLM.Anthropic.BaseURL,
+			Model:       s.config.LLM.Anthropic.Model,
+			Temperature: s.config.LLM.Anthropic.Temperature,
+			MaxTokens:   s.config.LLM.Anthropic.MaxTokens,
+		})
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider: %s", s.config.LLM.Provider)
 	}
 }
 
+// FeatureFlags represents enabled AI features.
+type FeatureFlags struct {
+	NLSearch        bool `json:"nl_search"`
+	SpanExplanation bool `json:"span_explanation"`
+	SmartFilter     bool `json:"smart_filter"`
+}
+
 // CapabilitiesResponse represents the AI Analysis capabilities response.
 type CapabilitiesResponse struct {
-	NLSearch        bool   `json:"nl_search"`
-	SpanExplanation bool   `json:"span_explanation"`
-	SmartFilter     bool   `json:"smart_filter"`
-	Streaming       bool   `json:"streaming"`
-	Provider        string `json:"provider"`
-	Model           string `json:"model"`
+	Features         FeatureFlags `json:"features"`
+	Streaming        bool         `json:"streaming"`
+	Provider         string       `json:"provider"`
+	Model            string       `json:"model"`
+	RequestTimeoutMS int64        `json:"request_timeout_ms"`
+	MaxInputBytes    int64        `json:"max_input_bytes"`
 }
 
 // handleCapabilities returns the enabled AI Analysis capabilities.
@@ -178,19 +212,31 @@ func (s *aiAnalysisExtension) handleCapabilities(w http.ResponseWriter, _ *http.
 		if s.config.LLM.OpenAI != nil {
 			model = s.config.LLM.OpenAI.Model
 		}
+	case "anthropic":
+		if s.config.LLM.Anthropic != nil {
+			model = s.config.LLM.Anthropic.Model
+		}
+	default:
+		// Keep an empty model string for unsupported providers.
 	}
 
 	response := CapabilitiesResponse{
-		NLSearch:        s.config.Features.NLSearch,
-		SpanExplanation: s.config.Features.SpanExplanation,
-		SmartFilter:     s.config.Features.SmartFilter,
-		Streaming:       s.config.Performance.StreamingEnabled,
-		Provider:        s.config.LLM.Provider,
-		Model:           model,
+		Features: FeatureFlags{
+			NLSearch:        s.config.Features.NLSearch,
+			SpanExplanation: s.config.Features.SpanExplanation,
+			SmartFilter:     s.config.Features.SmartFilter,
+		},
+		Streaming:        s.config.Performance.StreamingEnabled,
+		Provider:         s.config.LLM.Provider,
+		Model:            model,
+		RequestTimeoutMS: s.config.Performance.RequestTimeout.Milliseconds(),
+		MaxInputBytes:    s.config.Performance.MaxRequestBodyBytes,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	httpapi.WriteData(w, http.StatusOK, response, &httpapi.Meta{
+		Provider: s.config.LLM.Provider,
+		Model:    model,
+	})
 }
 
 // GetExtension retrieves the ai_analysis extension from the host.

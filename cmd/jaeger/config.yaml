@@ -74,12 +74,22 @@ extensions:
         model: qwen2.5:1.5b
         temperature: 0.1
         max_tokens: 2048
+      # openai:
+      #   api_key: ${env:OPENAI_API_KEY}
+      #   model: gpt-4o-mini
+      # anthropic:
+      #   api_key: ${env:ANTHROPIC_API_KEY}
+      #   model: claude-3-5-sonnet-latest
     features:
       nl_search: true
       span_explanation: true
       smart_filter: true
     performance:
       request_timeout: 30s
+      max_request_body_bytes: 262144
+      max_spans_per_classify: 200
+      max_concurrent_requests: 16
+      retry_attempts: 0
       streaming_enabled: true
       cache_enabled: false
 

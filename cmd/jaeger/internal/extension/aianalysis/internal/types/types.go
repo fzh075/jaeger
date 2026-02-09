@@ -22,9 +22,6 @@ type NLSearchResponse struct {
 
 	// Explanation provides a brief explanation of the parsing
 	Explanation string `json:"explanation,omitempty"`
-
-	// Error contains any error message
-	Error string `json:"error,omitempty"`
 }
 
 // ParsedQuery contains the structured search parameters extracted from natural language.
@@ -125,9 +122,6 @@ type SpanExplainResponse struct {
 
 	// Suggestions provides actionable suggestions
 	Suggestions []string `json:"suggestions,omitempty"`
-
-	// Error contains any error message
-	Error string `json:"error,omitempty"`
 }
 
 // ClassifyRequest represents a request to classify spans.
@@ -140,9 +134,6 @@ type ClassifyRequest struct {
 type ClassifyResponse struct {
 	// Classifications maps span IDs to their classifications
 	Classifications map[string]SpanClassification `json:"classifications"`
-
-	// Error contains any error message
-	Error string `json:"error,omitempty"`
 }
 
 // SpanClassification contains the classification for a span.
