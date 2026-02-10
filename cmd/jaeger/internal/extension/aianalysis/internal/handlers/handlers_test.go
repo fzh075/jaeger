@@ -30,7 +30,7 @@ func (f *flakyProvider) Generate(_ context.Context, _ string) (string, error) {
 	if f.calls == 1 {
 		return "", errors.New("transient provider failure")
 	}
-	return `{"service_name":"payment-service","span_name":"","duration_min":"","duration_max":"","lookback":"1h","tags":{"error":"true","http.status_code":"500"},"limit":20,"confidence":0.9,"explanation":"ok"}`, nil
+	return `{"service_name":"payment-service","operation_name":"","duration_min":"","duration_max":"","lookback":"1h","tags":{"error":"true","http.status_code":"500"},"limit":20,"confidence":0.9,"explanation":"ok"}`, nil
 }
 
 func (f *flakyProvider) GenerateStream(_ context.Context, _ string, _ llm.StreamHandler) error {

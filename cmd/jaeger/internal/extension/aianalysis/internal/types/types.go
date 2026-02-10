@@ -44,8 +44,8 @@ type ParsedQuery struct {
 	// ServiceName is the target service name
 	ServiceName string `json:"service_name,omitempty"`
 
-	// SpanName is the operation/span name filter
-	SpanName string `json:"span_name,omitempty"`
+	// OperationName is the operation/span name filter
+	OperationName string `json:"operation_name,omitempty"`
 
 	// DurationMin is the minimum duration filter (e.g., "500ms", "2s")
 	DurationMin string `json:"duration_min,omitempty"`

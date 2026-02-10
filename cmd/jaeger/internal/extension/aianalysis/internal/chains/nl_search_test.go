@@ -114,7 +114,7 @@ func TestNLSearchChainParse_NormalizeCandidatesAndBounds(t *testing.T) {
 		responses: []string{
 			`{
 				"service_name":"svca",
-				"span_name":"ALL",
+				"operation_name":"ALL",
 				"duration_min":" 500 MS ",
 				"duration_max":"2S",
 				"lookback":"1H",
@@ -137,7 +137,7 @@ func TestNLSearchChainParse_NormalizeCandidatesAndBounds(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "svcA", resp.ParsedQuery.ServiceName)
-	assert.Equal(t, "all", resp.ParsedQuery.SpanName)
+	assert.Equal(t, "all", resp.ParsedQuery.OperationName)
 	assert.Equal(t, "500ms", resp.ParsedQuery.DurationMin)
 	assert.Equal(t, "2s", resp.ParsedQuery.DurationMax)
 	assert.Equal(t, "1h", resp.ParsedQuery.Lookback)

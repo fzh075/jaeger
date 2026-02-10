@@ -27,7 +27,7 @@ var (
 
 	allowedNLSearchFields = map[string]struct{}{
 		"service_name":   {},
-		"span_name":      {},
+		"operation_name": {},
 		"duration_min":   {},
 		"duration_max":   {},
 		"lookback":       {},
@@ -47,10 +47,10 @@ var (
 	responseFieldAliases = map[string]string{
 		"service":        "service_name",
 		"servicename":    "service_name",
-		"operation":      "span_name",
-		"operationname":  "span_name",
-		"span":           "span_name",
-		"spanname":       "span_name",
+		"operation":      "operation_name",
+		"operationname":  "operation_name",
+		"span":           "operation_name",
+		"spanname":       "operation_name",
 		"minduration":    "duration_min",
 		"maxduration":    "duration_max",
 		"starttime":      "start_time_min",
@@ -60,7 +60,8 @@ var (
 		"lookback":       "lookback",
 		"lookbacktime":   "lookback",
 		"service_name":   "service_name",
-		"span_name":      "span_name",
+		"operation_name": "operation_name",
+		"span_name":      "operation_name",
 		"duration_min":   "duration_min",
 		"duration_max":   "duration_max",
 		"start_time_min": "start_time_min",
@@ -83,7 +84,7 @@ Convert the natural language query into structured search parameters JSON.
 
 IMPORTANT RULES:
 1. Extract only explicitly mentioned parameters.
-2. Use candidate values for service_name/span_name/lookback/tags keys when candidates are provided.
+2. Use candidate values for service_name/operation_name/lookback/tags keys when candidates are provided.
 3. Do NOT output has_errors. For error intent, output tags.error="true".
 4. Duration format must be one of: us, ms, s, m, h (examples: "500ms", "2s", "1m").
 5. Prefer lookback over explicit start/end when possible.
@@ -95,7 +96,7 @@ IMPORTANT RULES:
 OUTPUT FORMAT (JSON only, no prose):
 {
   "service_name": "string or empty",
-  "span_name": "string or empty",
+  "operation_name": "string or empty",
   "duration_min": "string or empty",
   "duration_max": "string or empty",
   "lookback": "string or empty",
@@ -109,16 +110,16 @@ OUTPUT FORMAT (JSON only, no prose):
 
 EXAMPLES:
 Query: "Show me 500 errors from payment-service > 2s"
-{"service_name":"payment-service","span_name":"","duration_min":"2s","duration_max":"","lookback":"","start_time_min":"","start_time_max":"","tags":{"http.status_code":"500","error":"true"},"limit":20,"confidence":0.92,"explanation":"HTTP 500 implies errors with lower-bound latency"}
+{"service_name":"payment-service","operation_name":"","duration_min":"2s","duration_max":"","lookback":"","start_time_min":"","start_time_max":"","tags":{"http.status_code":"500","error":"true"},"limit":20,"confidence":0.92,"explanation":"HTTP 500 implies errors with lower-bound latency"}
 
 Query: "frontend service last 1 hour errors"
-{"service_name":"frontend","span_name":"","duration_min":"","duration_max":"","lookback":"1h","start_time_min":"","start_time_max":"","tags":{"error":"true"},"limit":20,"confidence":0.90,"explanation":""}
+{"service_name":"frontend","operation_name":"","duration_min":"","duration_max":"","lookback":"1h","start_time_min":"","start_time_max":"","tags":{"error":"true"},"limit":20,"confidence":0.90,"explanation":""}
 
 Query: "Find checkout operation taking between 500ms and 1s"
-{"service_name":"","span_name":"checkout","duration_min":"500ms","duration_max":"1s","lookback":"","start_time_min":"","start_time_max":"","tags":{},"limit":20,"confidence":0.88,"explanation":""}
+{"service_name":"","operation_name":"checkout","duration_min":"500ms","duration_max":"1s","lookback":"","start_time_min":"","start_time_max":"","tags":{},"limit":20,"confidence":0.88,"explanation":""}
 
 Query: "mysql queries in order-service"
-{"service_name":"order-service","span_name":"","duration_min":"","duration_max":"","lookback":"","start_time_min":"","start_time_max":"","tags":{"db.system":"mysql"},"limit":20,"confidence":0.83,"explanation":""}
+{"service_name":"order-service","operation_name":"","duration_min":"","duration_max":"","lookback":"","start_time_min":"","start_time_max":"","tags":{"db.system":"mysql"},"limit":20,"confidence":0.83,"explanation":""}
 
 CANDIDATES (must follow when provided):
 %s
@@ -132,7 +133,7 @@ const nlSearchRepairPromptTemplate = `Fix the invalid Jaeger NL search JSON.
 Return JSON object only and strictly follow this schema:
 {
   "service_name": "string or empty",
-  "span_name": "string or empty",
+  "operation_name": "string or empty",
   "duration_min": "string or empty",
   "duration_max": "string or empty",
   "lookback": "string or empty",
@@ -241,8 +242,19 @@ func formatCandidatesForPrompt(candidates types.NLSearchCandidates) string {
 }
 
 func parseAndNormalizeNLResponse(response string, candidates types.NLSearchCandidates) (types.NLSearchResponse, error) {
+	// TODO(fzh075)
+	fmt.Printf("[fzh] response = %+v\n", response)
+
 	jsonStr := extractJSON(response)
+
+	// TODO(fzh075)
+	fmt.Printf("[fzh] jsonStr = %+v\n", jsonStr)
+
 	normalizedJSON, err := normalizeResponseFieldAliases(jsonStr)
+
+	// TODO(fzh075)
+	fmt.Printf("[fzh] normalizedJSON = %+v\n", normalizedJSON)
+
 	if err != nil {
 		return types.NLSearchResponse{}, fmt.Errorf("unmarshal model response: %w", err)
 	}
@@ -290,13 +302,13 @@ func normalizeAndValidateParsedQuery(parsed *types.ParsedQuery, candidates types
 		parsed.ServiceName = canonical
 	}
 
-	parsed.SpanName = strings.TrimSpace(parsed.SpanName)
-	if parsed.SpanName != "" {
-		canonical, ok := lookup.matchOperation(parsed.SpanName)
+	parsed.OperationName = strings.TrimSpace(parsed.OperationName)
+	if parsed.OperationName != "" {
+		canonical, ok := lookup.matchOperation(parsed.OperationName)
 		if !ok {
-			return fmt.Errorf("span_name %q is not in candidates", parsed.SpanName)
+			return fmt.Errorf("operation_name %q is not in candidates", parsed.OperationName)
 		}
-		parsed.SpanName = canonical
+		parsed.OperationName = canonical
 	}
 
 	minDuration, minValue, err := normalizeDuration(parsed.DurationMin)

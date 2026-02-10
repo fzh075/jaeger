@@ -91,7 +91,7 @@ func countMatchedSlots(expected, actual types.ParsedQuery) int {
 	if expected.ServiceName == actual.ServiceName {
 		matched++
 	}
-	if expected.SpanName == actual.SpanName {
+	if expected.OperationName == actual.OperationName {
 		matched++
 	}
 	if expected.Lookback == actual.Lookback {
