@@ -84,7 +84,7 @@ Convert the natural language query into structured search parameters JSON.
 
 IMPORTANT RULES:
 1. Extract only explicitly mentioned parameters.
-2. Use candidate values for service_name/operation_name/lookback/tags keys when candidates are provided.
+2. Use candidate values for service_name/operation_name/lookback/tags keys when candidates are provided. If you are not sure, leave the field empty.
 3. Do NOT output has_errors. For error intent, output tags.error="true".
 4. Duration format must be one of: us, ms, s, m, h (examples: "500ms", "2s", "1m").
 5. Prefer lookback over explicit start/end when possible.
@@ -243,6 +243,8 @@ func formatCandidatesForPrompt(candidates types.NLSearchCandidates) string {
 
 func parseAndNormalizeNLResponse(response string, candidates types.NLSearchCandidates) (types.NLSearchResponse, error) {
 	// TODO(fzh075)
+	fmt.Printf("[fzh] formatCandidatesForPrompt(candidates) = %+v\n", formatCandidatesForPrompt(candidates))
+	// TODO(fzh075)
 	fmt.Printf("[fzh] response = %+v\n", response)
 
 	jsonStr := extractJSON(response)
@@ -251,9 +253,6 @@ func parseAndNormalizeNLResponse(response string, candidates types.NLSearchCandi
 	fmt.Printf("[fzh] jsonStr = %+v\n", jsonStr)
 
 	normalizedJSON, err := normalizeResponseFieldAliases(jsonStr)
-
-	// TODO(fzh075)
-	fmt.Printf("[fzh] normalizedJSON = %+v\n", normalizedJSON)
 
 	if err != nil {
 		return types.NLSearchResponse{}, fmt.Errorf("unmarshal model response: %w", err)

@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -60,9 +59,6 @@ func (h *NLSearchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := h.base.withTimeout(r.Context())
 	defer cancel()
 
-	// TODO(fzh075)
-	fmt.Printf("[fzh] req.Candidates = %+v\n", req.Candidates)
-
 	if h.candidatesProvider != nil {
 		enriched, err := h.candidatesProvider.Enrich(ctx, req)
 		if err != nil {
@@ -71,9 +67,6 @@ func (h *NLSearchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			req.Candidates = enriched
 		}
 	}
-
-	// TODO(fzh075)
-	fmt.Printf("[fzh] req.Candidates = %+v\n", req.Candidates)
 
 	h.base.logger.Info("Processing NL search request", zap.String("query", req.Query))
 	var response types.NLSearchResponse
