@@ -14,14 +14,14 @@ type NLSearchRequest struct {
 
 // NLSearchCandidates contains constrained options for NL search parsing.
 type NLSearchCandidates struct {
-	// Services is the list of selectable services in UI.
-	Services []string `json:"services,omitempty"`
+	// ServiceName is the list of selectable services in UI.
+	ServiceName []string `json:"service_name,omitempty"`
 
-	// Operations is the list of selectable operations for current service.
-	Operations []string `json:"operations,omitempty"`
+	// OperationName is the list of selectable operations for current service.
+	OperationName []string `json:"operation_name,omitempty"`
 
-	// Lookbacks is the list of selectable lookback options in UI.
-	Lookbacks []string `json:"lookbacks,omitempty"`
+	// Lookback is the list of selectable lookback options in UI.
+	Lookback []string `json:"lookback,omitempty"`
 
 	// Tags is the list of allowed tag keys.
 	Tags []string `json:"tags,omitempty"`

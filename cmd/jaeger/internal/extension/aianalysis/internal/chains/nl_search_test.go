@@ -79,6 +79,22 @@ func TestNLSearchChainPromptFormat(t *testing.T) {
 	assert.Contains(t, nlSearchPromptTemplate, "lookback")
 }
 
+func TestFormatCandidatesForPrompt_UsesNLFieldNames(t *testing.T) {
+	encoded := formatCandidatesForPrompt(types.NLSearchCandidates{
+		ServiceName:   []string{"svcA", "svcA"},
+		OperationName: []string{"all"},
+		Lookback:      []string{"1h"},
+		Tags:          []string{"error"},
+	})
+
+	assert.JSONEq(t, `{
+		"service_name": ["svcA"],
+		"operation_name": ["all"],
+		"lookback": ["1h"],
+		"tags": ["error"]
+	}`, encoded)
+}
+
 type sequenceProvider struct {
 	responses []string
 	errs      []error
@@ -128,10 +144,10 @@ func TestNLSearchChainParse_NormalizeCandidatesAndBounds(t *testing.T) {
 	resp, err := chain.Parse(context.Background(), types.NLSearchRequest{
 		Query: "show errors in svcA with 500 in 1h",
 		Candidates: types.NLSearchCandidates{
-			Services:   []string{"svcA", "svcB"},
-			Operations: []string{"all", "createPayment"},
-			Lookbacks:  []string{"1h", "24h", "custom"},
-			Tags:       []string{"error", "http.status_code"},
+			ServiceName:   []string{"svcA", "svcB"},
+			OperationName: []string{"all", "createPayment"},
+			Lookback:      []string{"1h", "24h", "custom"},
+			Tags:          []string{"error", "http.status_code"},
 		},
 	})
 	require.NoError(t, err)
@@ -167,9 +183,9 @@ func TestNLSearchChainParse_CustomTimeNormalization(t *testing.T) {
 	resp, err := chain.Parse(context.Background(), types.NLSearchRequest{
 		Query: "errors for svcA in last two hours",
 		Candidates: types.NLSearchCandidates{
-			Services:  []string{"svcA"},
-			Lookbacks: []string{"1h", "24h", "custom"},
-			Tags:      []string{"error"},
+			ServiceName: []string{"svcA"},
+			Lookback:    []string{"1h", "24h", "custom"},
+			Tags:        []string{"error"},
 		},
 	})
 	require.NoError(t, err)
@@ -193,9 +209,9 @@ func TestNLSearchChainParse_RepairRetry(t *testing.T) {
 	resp, err := chain.Parse(context.Background(), types.NLSearchRequest{
 		Query: "show errors in svcA for one hour",
 		Candidates: types.NLSearchCandidates{
-			Services:  []string{"svcA"},
-			Lookbacks: []string{"1h", "custom"},
-			Tags:      []string{"error"},
+			ServiceName: []string{"svcA"},
+			Lookback:    []string{"1h", "custom"},
+			Tags:        []string{"error"},
 		},
 	})
 	require.NoError(t, err)
@@ -215,9 +231,9 @@ func TestNLSearchChainParse_RepairStillInvalid(t *testing.T) {
 	_, err := chain.Parse(context.Background(), types.NLSearchRequest{
 		Query: "show errors in unknown-service for one hour",
 		Candidates: types.NLSearchCandidates{
-			Services:  []string{"svcA"},
-			Lookbacks: []string{"1h", "custom"},
-			Tags:      []string{"error"},
+			ServiceName: []string{"svcA"},
+			Lookback:    []string{"1h", "custom"},
+			Tags:        []string{"error"},
 		},
 	})
 	require.Error(t, err)
@@ -236,9 +252,9 @@ func TestNLSearchChainParse_RejectLegacyFields(t *testing.T) {
 	resp, err := chain.Parse(context.Background(), types.NLSearchRequest{
 		Query: "show errors in svcA for one hour",
 		Candidates: types.NLSearchCandidates{
-			Services:  []string{"svcA"},
-			Lookbacks: []string{"1h", "custom"},
-			Tags:      []string{"error"},
+			ServiceName: []string{"svcA"},
+			Lookback:    []string{"1h", "custom"},
+			Tags:        []string{"error"},
 		},
 	})
 	require.NoError(t, err)

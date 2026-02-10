@@ -92,13 +92,13 @@ func (p *queryBackedNLSearchCandidatesProvider) resolveTags(ctx context.Context,
 		return cloneStringSlice(defaultNLFallbackTagSet), nil
 	}
 
-	serviceHint := inferServiceHint(req.Query, req.Candidates.Services)
+	serviceHint := inferServiceHint(req.Query, req.Candidates.ServiceName)
 	cacheKey := strings.ToLower(strings.TrimSpace(serviceHint))
 	if tags, ok := p.readCache(cacheKey); ok {
 		return tags, nil
 	}
 
-	lookback := pickSamplingLookback(req.Candidates.Lookbacks)
+	lookback := pickSamplingLookback(req.Candidates.Lookback)
 	end := p.now().UTC()
 	query := querysvc.TraceQueryParams{
 		TraceQueryParams: tracestore.TraceQueryParams{

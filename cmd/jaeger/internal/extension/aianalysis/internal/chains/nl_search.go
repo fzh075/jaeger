@@ -229,10 +229,10 @@ func buildNLSearchRepairPrompt(req types.NLSearchRequest, invalidOutput string, 
 
 func formatCandidatesForPrompt(candidates types.NLSearchCandidates) string {
 	payload := map[string][]string{
-		"services":   normalizeCandidateList(candidates.Services),
-		"operations": normalizeCandidateList(candidates.Operations),
-		"lookbacks":  normalizeCandidateList(candidates.Lookbacks),
-		"tags":       normalizeCandidateList(candidates.Tags),
+		"service_name":   normalizeCandidateList(candidates.ServiceName),
+		"operation_name": normalizeCandidateList(candidates.OperationName),
+		"lookback":       normalizeCandidateList(candidates.Lookback),
+		"tags":           normalizeCandidateList(candidates.Tags),
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -467,13 +467,13 @@ type candidateLookup struct {
 }
 
 func newCandidateLookup(candidates types.NLSearchCandidates) candidateLookup {
-	lookbacks := normalizeCandidateMap(candidates.Lookbacks)
+	lookbacks := normalizeCandidateMap(candidates.Lookback)
 	if len(lookbacks) > 0 {
 		lookbacks["custom"] = "custom"
 	}
 	return candidateLookup{
-		services:   normalizeCandidateMap(candidates.Services),
-		operations: normalizeCandidateMap(candidates.Operations),
+		services:   normalizeCandidateMap(candidates.ServiceName),
+		operations: normalizeCandidateMap(candidates.OperationName),
 		lookbacks:  lookbacks,
 		tags:       normalizeCandidateMap(candidates.Tags),
 	}
