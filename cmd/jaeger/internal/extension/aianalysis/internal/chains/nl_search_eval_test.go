@@ -19,6 +19,7 @@ import (
 const (
 	offlineEvalPath         = "testdata/nlsearch_eval/golden.jsonl"
 	offlineEvalMinSlotScore = 0.90
+	offlineEvalMinExecRate  = 0.95
 )
 
 type offlineEvalCase struct {
@@ -55,6 +56,7 @@ func TestNLSearchOfflineEvalGolden(t *testing.T) {
 	executableRate := float64(executableCount) / float64(len(cases))
 	t.Logf("offline eval: cases=%d slot_accuracy=%.3f executable_rate=%.3f", len(cases), slotAccuracy, executableRate)
 	require.GreaterOrEqualf(t, slotAccuracy, offlineEvalMinSlotScore, "slot accuracy should be >= %.2f", offlineEvalMinSlotScore)
+	require.GreaterOrEqualf(t, executableRate, offlineEvalMinExecRate, "executable rate should be >= %.2f", offlineEvalMinExecRate)
 }
 
 func loadOfflineEvalCases(t *testing.T, path string) []offlineEvalCase {
@@ -110,7 +112,7 @@ func countMatchedSlots(expected, actual types.ParsedQuery) int {
 	if expected.Limit == actual.Limit {
 		matched++
 	}
-	if reflect.DeepEqual(expected.Attributes, actual.Attributes) {
+	if reflect.DeepEqual(expected.Tags, actual.Tags) {
 		matched++
 	}
 	return matched

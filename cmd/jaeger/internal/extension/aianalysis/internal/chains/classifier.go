@@ -107,7 +107,7 @@ func (c *ClassifierChain) buildPrompt(spans []types.SpanData) string {
 		OperationName string            `json:"operation"`
 		Duration      string            `json:"duration"`
 		Status        string            `json:"status"`
-		Attributes    map[string]string `json:"attrs,omitempty"`
+		Tags          map[string]string `json:"tags,omitempty"`
 	}
 
 	compactSpans := make([]compactSpan, len(spans))
@@ -119,7 +119,7 @@ func (c *ClassifierChain) buildPrompt(spans []types.SpanData) string {
 			OperationName: span.OperationName,
 			Duration:      span.Duration,
 			Status:        span.Status,
-			Attributes:    span.Attributes,
+			Tags:          span.Tags,
 		}
 	}
 

@@ -19,8 +19,9 @@ import (
 
 // NLSearchHandler handles natural language search requests.
 type NLSearchHandler struct {
-	chain *chains.NLSearchChain
-	base  baseHandler
+	chain              *chains.NLSearchChain
+	base               baseHandler
+	candidatesProvider NLSearchCandidatesProvider
 }
 
 // NewNLSearchHandler creates a new NL search handler.
@@ -30,8 +31,9 @@ func NewNLSearchHandler(provider llm.Provider, logger *zap.Logger, options ...Ha
 		opt = options[0]
 	}
 	return &NLSearchHandler{
-		chain: chains.NewNLSearchChain(provider),
-		base:  newBaseHandler(provider, logger, opt),
+		chain:              chains.NewNLSearchChain(provider),
+		base:               newBaseHandler(provider, logger, opt),
+		candidatesProvider: opt.NLSearchCandidates,
 	}
 }
 
@@ -56,6 +58,15 @@ func (h *NLSearchHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	ctx, cancel := h.base.withTimeout(r.Context())
 	defer cancel()
+
+	if h.candidatesProvider != nil {
+		enriched, err := h.candidatesProvider.Enrich(ctx, req)
+		if err != nil {
+			h.base.logger.Warn("Failed to enrich NL search candidates, using original candidates", zap.Error(err))
+		} else {
+			req.Candidates = enriched
+		}
+	}
 
 	h.base.logger.Info("Processing NL search request", zap.String("query", req.Query))
 	var response types.NLSearchResponse

@@ -13,11 +13,13 @@ import (
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension"
+	"go.opentelemetry.io/collector/extension/extensioncapabilities"
 	"go.uber.org/zap"
 
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/handlers"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/httpapi"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/jaegerquery/querysvc"
 )
 
 // ErrExtensionNotConfigured indicates ai_analysis extension is not configured.
@@ -30,18 +32,26 @@ type Extension interface {
 }
 
 var (
-	_ extension.Extension = (*aiAnalysisExtension)(nil)
-	_ Extension           = (*aiAnalysisExtension)(nil)
+	_ extension.Extension             = (*aiAnalysisExtension)(nil)
+	_ extensioncapabilities.Dependent = (*aiAnalysisExtension)(nil)
+	_ Extension                       = (*aiAnalysisExtension)(nil)
 )
+
+var jaegerQueryExtensionID = component.NewID(component.MustNewType("jaeger_query"))
+
+type queryServiceAccessor interface {
+	QueryService() *querysvc.QueryService
+}
 
 // aiAnalysisExtension implements the AI Analysis extension.
 type aiAnalysisExtension struct {
-	config      *Config
-	telset      component.TelemetrySettings
-	llmProvider llm.Provider
-	requestSem  chan struct{}
-	initErr     error
-	initOnce    sync.Once
+	config             *Config
+	telset             component.TelemetrySettings
+	llmProvider        llm.Provider
+	requestSem         chan struct{}
+	initErr            error
+	initOnce           sync.Once
+	queryServiceSource queryServiceAccessor
 }
 
 // newAIAnalysisExtension creates a new AI Analysis extension instance.
@@ -60,9 +70,18 @@ func newAIAnalysisExtension(config *Config, telset component.TelemetrySettings) 
 	}
 }
 
+// Dependencies implements extensioncapabilities.Dependent.
+func (*aiAnalysisExtension) Dependencies() []component.ID {
+	return []component.ID{jaegerQueryExtensionID}
+}
+
 // Start initializes AI provider.
-func (s *aiAnalysisExtension) Start(_ context.Context, _ component.Host) error {
+func (s *aiAnalysisExtension) Start(_ context.Context, host component.Host) error {
 	s.telset.Logger.Info("Starting AI Analysis extension")
+	s.queryServiceSource = resolveQueryServiceAccessor(host)
+	if s.queryServiceSource == nil {
+		s.telset.Logger.Warn("jaeger_query extension not available; NL tag candidates will use fallback set")
+	}
 	if err := s.ensureLLMProvider(); err != nil {
 		return fmt.Errorf("failed to initialize LLM provider: %w", err)
 	}
@@ -106,6 +125,10 @@ func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
 		RetryAttempts:        s.config.Performance.RetryAttempts,
 		StreamingEnabled:     s.config.Performance.StreamingEnabled,
 		ConcurrencyLimiter:   s.requestSem,
+		NLSearchCandidates: handlers.NewQueryBackedNLSearchCandidatesProvider(
+			s,
+			s.telset.Logger,
+		),
 	}
 
 	if s.config.Features.NLSearch {
@@ -128,6 +151,30 @@ func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
 		zap.Bool("span_explanation", s.config.Features.SpanExplanation),
 		zap.Bool("smart_filter", s.config.Features.SmartFilter),
 	)
+	return nil
+}
+
+func (s *aiAnalysisExtension) QueryService() *querysvc.QueryService {
+	if s.queryServiceSource == nil {
+		return nil
+	}
+	return s.queryServiceSource.QueryService()
+}
+
+func resolveQueryServiceAccessor(host component.Host) queryServiceAccessor {
+	if host == nil {
+		return nil
+	}
+	for id, ext := range host.GetExtensions() {
+		if id.Type() != jaegerQueryExtensionID.Type() {
+			continue
+		}
+		accessor, ok := ext.(queryServiceAccessor)
+		if !ok {
+			return nil
+		}
+		return accessor
+	}
 	return nil
 }
 

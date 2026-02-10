@@ -8,9 +8,6 @@ type NLSearchRequest struct {
 	// Query is the natural language query (e.g., "find errors in payment-service over 2s")
 	Query string `json:"query"`
 
-	// Language is the preferred language for the response (default: auto-detect)
-	Language string `json:"language,omitempty"`
-
 	// Candidates constrains model output to known UI options.
 	Candidates NLSearchCandidates `json:"candidates,omitempty"`
 }
@@ -26,8 +23,8 @@ type NLSearchCandidates struct {
 	// Lookbacks is the list of selectable lookback options in UI.
 	Lookbacks []string `json:"lookbacks,omitempty"`
 
-	// TagKeys is the list of allowed tag keys.
-	TagKeys []string `json:"tag_keys,omitempty"`
+	// Tags is the list of allowed tag keys.
+	Tags []string `json:"tags,omitempty"`
 }
 
 // NLSearchResponse represents the response from natural language search.
@@ -65,8 +62,8 @@ type ParsedQuery struct {
 	// StartTimeMax is the maximum start time
 	StartTimeMax string `json:"start_time_max,omitempty"`
 
-	// Attributes contains key-value attribute filters
-	Attributes map[string]string `json:"attributes,omitempty"`
+	// Tags contains key-value tag filters.
+	Tags map[string]string `json:"tags,omitempty"`
 
 	// Limit is the maximum number of results
 	Limit int `json:"limit,omitempty"`
@@ -107,8 +104,8 @@ type SpanData struct {
 	// StatusMessage is the error message if status is ERROR
 	StatusMessage string `json:"status_message,omitempty"`
 
-	// Attributes contains span attributes
-	Attributes map[string]string `json:"attributes,omitempty"`
+	// Tags contains span tags
+	Tags map[string]string `json:"tags,omitempty"`
 
 	// Events contains span events
 	Events []SpanEvent `json:"events,omitempty"`
@@ -122,9 +119,9 @@ type SpanData struct {
 
 // SpanEvent represents a span event.
 type SpanEvent struct {
-	Name       string            `json:"name"`
-	Timestamp  string            `json:"timestamp"`
-	Attributes map[string]string `json:"attributes,omitempty"`
+	Name      string            `json:"name"`
+	Timestamp string            `json:"timestamp"`
+	Tags      map[string]string `json:"tags,omitempty"`
 }
 
 // SpanExplainResponse represents the response from span explanation.

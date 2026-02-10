@@ -30,7 +30,7 @@ func (f *flakyProvider) Generate(_ context.Context, _ string) (string, error) {
 	if f.calls == 1 {
 		return "", errors.New("transient provider failure")
 	}
-	return `{"service_name":"payment-service","span_name":"","duration_min":"","duration_max":"","lookback":"1h","attributes":{"error":"true","http.status_code":"500"},"limit":20,"confidence":0.9,"explanation":"ok"}`, nil
+	return `{"service_name":"payment-service","span_name":"","duration_min":"","duration_max":"","lookback":"1h","tags":{"error":"true","http.status_code":"500"},"limit":20,"confidence":0.9,"explanation":"ok"}`, nil
 }
 
 func (f *flakyProvider) GenerateStream(_ context.Context, _ string, _ llm.StreamHandler) error {
@@ -153,7 +153,7 @@ func TestTypesJSON(t *testing.T) {
 		ServiceName: "test-service",
 		Lookback:    "1h",
 		DurationMin: "500ms",
-		Attributes:  map[string]string{"key": "value"},
+		Tags:        map[string]string{"key": "value"},
 	}
 
 	data, err := json.Marshal(query)
@@ -166,7 +166,7 @@ func TestTypesJSON(t *testing.T) {
 	assert.Equal(t, query.ServiceName, decoded.ServiceName)
 	assert.Equal(t, query.Lookback, decoded.Lookback)
 	assert.Equal(t, query.DurationMin, decoded.DurationMin)
-	assert.Equal(t, query.Attributes["key"], decoded.Attributes["key"])
+	assert.Equal(t, query.Tags["key"], decoded.Tags["key"])
 }
 
 func TestNLSearchHandler_RetryAttempts(t *testing.T) {
@@ -189,5 +189,5 @@ func TestNLSearchHandler_RetryAttempts(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&response)
 	require.NoError(t, err)
 	assert.Equal(t, "payment-service", response.Data.ParsedQuery.ServiceName)
-	assert.Equal(t, "true", response.Data.ParsedQuery.Attributes["error"])
+	assert.Equal(t, "true", response.Data.ParsedQuery.Tags["error"])
 }

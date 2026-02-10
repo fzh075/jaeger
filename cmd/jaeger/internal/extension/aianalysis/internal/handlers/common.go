@@ -17,6 +17,7 @@ import (
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/chains"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/httpapi"
 	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/llm"
+	"github.com/jaegertracing/jaeger/cmd/jaeger/internal/extension/aianalysis/internal/types"
 )
 
 const (
@@ -50,6 +51,12 @@ type HandlerOptions struct {
 	RetryAttempts        int
 	StreamingEnabled     bool
 	ConcurrencyLimiter   chan struct{}
+	NLSearchCandidates   NLSearchCandidatesProvider
+}
+
+// NLSearchCandidatesProvider enriches or overrides NLSearch candidates per request.
+type NLSearchCandidatesProvider interface {
+	Enrich(context.Context, types.NLSearchRequest) (types.NLSearchCandidates, error)
 }
 
 type baseHandler struct {

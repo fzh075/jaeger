@@ -24,6 +24,57 @@ const (
 var (
 	durationPattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(us|ms|s|m|h)$`)
 	relativePattern = regexp.MustCompile(`^-(\d+)([smhdw])$`)
+
+	allowedNLSearchFields = map[string]struct{}{
+		"service_name":   {},
+		"span_name":      {},
+		"duration_min":   {},
+		"duration_max":   {},
+		"lookback":       {},
+		"start_time_min": {},
+		"start_time_max": {},
+		"tags":           {},
+		"limit":          {},
+		"confidence":     {},
+		"explanation":    {},
+	}
+	forbiddenNLSearchFields = map[string]struct{}{ // TODO(fzh075) delete?
+		"attributes": {},
+		"tag_keys":   {},
+		"has_errors": {},
+		"language":   {},
+	}
+	responseFieldAliases = map[string]string{
+		"service":        "service_name",
+		"servicename":    "service_name",
+		"operation":      "span_name",
+		"operationname":  "span_name",
+		"span":           "span_name",
+		"spanname":       "span_name",
+		"minduration":    "duration_min",
+		"maxduration":    "duration_max",
+		"starttime":      "start_time_min",
+		"endtime":        "start_time_max",
+		"start":          "start_time_min",
+		"end":            "start_time_max",
+		"lookback":       "lookback",
+		"lookbacktime":   "lookback",
+		"service_name":   "service_name",
+		"span_name":      "span_name",
+		"duration_min":   "duration_min",
+		"duration_max":   "duration_max",
+		"start_time_min": "start_time_min",
+		"start_time_max": "start_time_max",
+		"confidence":     "confidence",
+		"explanation":    "explanation",
+		"limit":          "limit",
+		"tags":           "tags",
+		"tag":            "tags",
+		"attributes":     "attributes",
+		"tag_keys":       "tag_keys",
+		"has_errors":     "has_errors",
+		"language":       "language",
+	}
 )
 
 const nlSearchPromptTemplate = `You are a deterministic parser for Jaeger trace search.
@@ -31,19 +82,17 @@ const nlSearchPromptTemplate = `You are a deterministic parser for Jaeger trace 
 Convert the natural language query into structured search parameters JSON.
 
 IMPORTANT RULES:
-1. Extract only explicitly mentioned parameters
-2. Output service_name / span_name / lookback from candidates when candidates are provided
-3. For error intents, use attributes.error="true" (do NOT output has_errors)
-4. Duration format must be one of: us, ms, s, m, h (e.g. "500ms", "2s", "1m")
-5. Prefer lookback over explicit start/end when possible
-6. Use lookback="custom" only when query explicitly requests concrete time range
-7. If lookback is not "custom", keep start_time_min and start_time_max empty
-8. Default limit is 20 if not specified
+1. Extract only explicitly mentioned parameters.
+2. Use candidate values for service_name/span_name/lookback/tags keys when candidates are provided.
+3. Do NOT output has_errors. For error intent, output tags.error="true".
+4. Duration format must be one of: us, ms, s, m, h (examples: "500ms", "2s", "1m").
+5. Prefer lookback over explicit start/end when possible.
+6. Use lookback="custom" only when query explicitly requests a concrete time range.
+7. If lookback is not "custom", keep start_time_min and start_time_max empty.
+8. If lookback is "custom", both start_time_min and start_time_max must be present.
+9. Default limit is 20 if not specified.
 
-LANGUAGE PREFERENCE:
-%s
-
-OUTPUT FORMAT (JSON only, no explanation):
+OUTPUT FORMAT (JSON only, no prose):
 {
   "service_name": "string or empty",
   "span_name": "string or empty",
@@ -52,11 +101,24 @@ OUTPUT FORMAT (JSON only, no explanation):
   "lookback": "string or empty",
   "start_time_min": "string or empty",
   "start_time_max": "string or empty",
-  "attributes": {"key": "value"} or {},
+  "tags": {"key": "value"} or {},
   "limit": number,
   "confidence": 0.0-1.0,
   "explanation": "optional short reasoning"
 }
+
+EXAMPLES:
+Query: "Show me 500 errors from payment-service > 2s"
+{"service_name":"payment-service","span_name":"","duration_min":"2s","duration_max":"","lookback":"","start_time_min":"","start_time_max":"","tags":{"http.status_code":"500","error":"true"},"limit":20,"confidence":0.92,"explanation":"HTTP 500 implies errors with lower-bound latency"}
+
+Query: "frontend service last 1 hour errors"
+{"service_name":"frontend","span_name":"","duration_min":"","duration_max":"","lookback":"1h","start_time_min":"","start_time_max":"","tags":{"error":"true"},"limit":20,"confidence":0.90,"explanation":""}
+
+Query: "Find checkout operation taking between 500ms and 1s"
+{"service_name":"","span_name":"checkout","duration_min":"500ms","duration_max":"1s","lookback":"","start_time_min":"","start_time_max":"","tags":{},"limit":20,"confidence":0.88,"explanation":""}
+
+Query: "mysql queries in order-service"
+{"service_name":"order-service","span_name":"","duration_min":"","duration_max":"","lookback":"","start_time_min":"","start_time_max":"","tags":{"db.system":"mysql"},"limit":20,"confidence":0.83,"explanation":""}
 
 CANDIDATES (must follow when provided):
 %s
@@ -76,20 +138,18 @@ Return JSON object only and strictly follow this schema:
   "lookback": "string or empty",
   "start_time_min": "string or empty",
   "start_time_max": "string or empty",
-  "attributes": {"key": "value"} or {},
+  "tags": {"key": "value"} or {},
   "limit": number,
   "confidence": 0.0-1.0,
   "explanation": "optional short reasoning"
 }
 
-RULES:
-1. Use candidates when provided
-2. Put error intent into attributes.error="true"
-3. Use lookback first; start/end only for lookback="custom"
-4. No markdown, no prose, JSON only
-
-LANGUAGE PREFERENCE:
-%s
+STRICT RULES:
+1. Use candidates when provided.
+2. Do NOT output attributes / tag_keys / has_errors / language.
+3. Put error intent into tags.error="true".
+4. Use lookback first; start/end only for lookback="custom".
+5. No markdown, no prose, JSON only.
 
 CANDIDATES:
 %s
@@ -133,9 +193,6 @@ func (c *NLSearchChain) Parse(ctx context.Context, req types.NLSearchRequest) (t
 		return types.NLSearchResponse{}, fmt.Errorf("%w: %w", ErrLLMGeneration, err)
 	}
 
-	// TODO(fzh075)
-	fmt.Printf("[fzh] response = %+v\n", response)
-
 	parsed, parseErr := parseAndNormalizeNLResponse(response, req.Candidates)
 	if parseErr == nil {
 		return parsed, nil
@@ -156,21 +213,12 @@ func (c *NLSearchChain) Parse(ctx context.Context, req types.NLSearchRequest) (t
 }
 
 func buildNLSearchPrompt(req types.NLSearchRequest) string {
-	language := strings.TrimSpace(req.Language)
-	if language == "" {
-		language = "auto"
-	}
-	return fmt.Sprintf(nlSearchPromptTemplate, language, formatCandidatesForPrompt(req.Candidates), req.Query)
+	return fmt.Sprintf(nlSearchPromptTemplate, formatCandidatesForPrompt(req.Candidates), req.Query)
 }
 
 func buildNLSearchRepairPrompt(req types.NLSearchRequest, invalidOutput string, parseErr error) string {
-	language := strings.TrimSpace(req.Language)
-	if language == "" {
-		language = "auto"
-	}
 	return fmt.Sprintf(
 		nlSearchRepairPromptTemplate,
-		language,
 		formatCandidatesForPrompt(req.Candidates),
 		req.Query,
 		parseErr.Error(),
@@ -183,7 +231,7 @@ func formatCandidatesForPrompt(candidates types.NLSearchCandidates) string {
 		"services":   normalizeCandidateList(candidates.Services),
 		"operations": normalizeCandidateList(candidates.Operations),
 		"lookbacks":  normalizeCandidateList(candidates.Lookbacks),
-		"tag_keys":   normalizeCandidateList(candidates.TagKeys),
+		"tags":       normalizeCandidateList(candidates.Tags),
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -194,13 +242,20 @@ func formatCandidatesForPrompt(candidates types.NLSearchCandidates) string {
 
 func parseAndNormalizeNLResponse(response string, candidates types.NLSearchCandidates) (types.NLSearchResponse, error) {
 	jsonStr := extractJSON(response)
-
-	// TODO(fzh075)
-	fmt.Printf("[fzh] jsonStr = %+v\n", jsonStr)
+	normalizedJSON, err := normalizeResponseFieldAliases(jsonStr)
+	if err != nil {
+		return types.NLSearchResponse{}, fmt.Errorf("unmarshal model response: %w", err)
+	}
+	if err := validateNLSearchOutputFields(normalizedJSON); err != nil {
+		return types.NLSearchResponse{}, err
+	}
 
 	var parsed ParsedQueryWithConfidence
-	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(normalizedJSON), &parsed); err != nil {
 		return types.NLSearchResponse{}, fmt.Errorf("unmarshal model response: %w", err)
+	}
+	if parsed.Tags == nil {
+		parsed.Tags = map[string]string{}
 	}
 
 	if err := normalizeAndValidateParsedQuery(&parsed.ParsedQuery, candidates); err != nil {
@@ -287,26 +342,26 @@ func normalizeAndValidateParsedQuery(parsed *types.ParsedQuery, candidates types
 		if err != nil {
 			return fmt.Errorf("start_time_max: %w", err)
 		}
-		if endParsed.Before(startParsed) {
+		if !startParsed.Before(endParsed) {
 			return fmt.Errorf("start_time_min must be earlier than start_time_max")
 		}
 		parsed.StartTimeMin = startParsed.Format(time.RFC3339)
 		parsed.StartTimeMax = endParsed.Format(time.RFC3339)
 	}
 
-	normalizedAttrs := make(map[string]string)
-	for k, v := range parsed.Attributes {
-		key := strings.TrimSpace(k)
+	normalizedTags := make(map[string]string)
+	for k, v := range parsed.Tags {
+		key := strings.TrimSpace(strings.ToLower(k))
 		if key == "" {
 			continue
 		}
 		canonical, ok := lookup.matchTagKey(key)
 		if !ok {
-			return fmt.Errorf("attribute key %q is not in candidates", key)
+			return fmt.Errorf("tag key %q is not in candidates", key)
 		}
-		normalizedAttrs[canonical] = strings.TrimSpace(v)
+		normalizedTags[canonical] = strings.TrimSpace(v)
 	}
-	parsed.Attributes = normalizedAttrs
+	parsed.Tags = normalizedTags
 
 	if parsed.Limit <= 0 {
 		parsed.Limit = defaultNLSearchLimit
@@ -396,7 +451,7 @@ type candidateLookup struct {
 	services   map[string]string
 	operations map[string]string
 	lookbacks  map[string]string
-	tagKeys    map[string]string
+	tags       map[string]string
 }
 
 func newCandidateLookup(candidates types.NLSearchCandidates) candidateLookup {
@@ -408,7 +463,7 @@ func newCandidateLookup(candidates types.NLSearchCandidates) candidateLookup {
 		services:   normalizeCandidateMap(candidates.Services),
 		operations: normalizeCandidateMap(candidates.Operations),
 		lookbacks:  lookbacks,
-		tagKeys:    normalizeCandidateMap(candidates.TagKeys),
+		tags:       normalizeCandidateMap(candidates.Tags),
 	}
 }
 
@@ -419,7 +474,11 @@ func normalizeCandidateMap(values []string) map[string]string {
 		if trimmed == "" {
 			continue
 		}
-		result[strings.ToLower(trimmed)] = trimmed
+		lower := strings.ToLower(trimmed)
+		if _, exists := result[lower]; exists {
+			continue
+		}
+		result[lower] = trimmed
 	}
 	return result
 }
@@ -455,7 +514,7 @@ func (l candidateLookup) matchLookback(value string) (string, bool) {
 }
 
 func (l candidateLookup) matchTagKey(value string) (string, bool) {
-	return matchCandidate(value, l.tagKeys)
+	return matchCandidate(value, l.tags)
 }
 
 func matchCandidate(value string, candidates map[string]string) (string, bool) {
@@ -468,6 +527,56 @@ func matchCandidate(value string, candidates map[string]string) (string, bool) {
 	}
 	matched, ok := candidates[strings.ToLower(trimmed)]
 	return matched, ok
+}
+
+func validateNLSearchOutputFields(jsonStr string) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+		return fmt.Errorf("unmarshal model response: %w", err)
+	}
+
+	for key := range raw {
+		normalized := strings.ToLower(strings.TrimSpace(key))
+		if _, forbidden := forbiddenNLSearchFields[normalized]; forbidden {
+			return fmt.Errorf("field %q is not allowed", key)
+		}
+		if _, ok := allowedNLSearchFields[normalized]; !ok {
+			return fmt.Errorf("unknown field %q", key)
+		}
+	}
+
+	return nil
+}
+
+func normalizeResponseFieldAliases(jsonStr string) (string, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+		return "", err
+	}
+
+	normalized := make(map[string]json.RawMessage, len(raw))
+	for key, value := range raw {
+		mappedKey := strings.ToLower(strings.TrimSpace(key))
+		if alias, ok := responseFieldAliases[canonicalFieldName(key)]; ok {
+			mappedKey = alias
+		}
+		if _, exists := normalized[mappedKey]; exists {
+			continue
+		}
+		normalized[mappedKey] = value
+	}
+
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+func canonicalFieldName(key string) string {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	replacer := strings.NewReplacer("_", "", "-", "", " ", "")
+	return replacer.Replace(normalized)
 }
 
 // extractJSON extracts JSON from a response that may contain Markdown code blocks.

@@ -24,7 +24,7 @@ func TestExplainerChainBuildPrompt(t *testing.T) {
 			Duration:      "2.5s",
 			Status:        "ERROR",
 			StatusMessage: "Payment gateway timeout",
-			Attributes: map[string]string{
+			Tags: map[string]string{
 				"http.method":      "POST",
 				"http.status_code": "503",
 			},

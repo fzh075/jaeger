@@ -23,7 +23,7 @@ SPAN DETAILS:
 - Duration: %s
 - Status: %s
 - Status Message: %s
-- Attributes: %s
+- Tags: %s
 - Events: %s
 - Parent Span ID: %s
 - Child Count: %d
@@ -107,7 +107,7 @@ func (c *ExplainerChain) buildPrompt(req types.SpanExplainRequest) string {
 
 	span := req.SpanData
 
-	attrs, _ := json.Marshal(span.Attributes)
+	tags, _ := json.Marshal(span.Tags)
 	events, _ := json.Marshal(span.Events)
 
 	statusMessage := span.StatusMessage
@@ -126,7 +126,7 @@ func (c *ExplainerChain) buildPrompt(req types.SpanExplainRequest) string {
 		span.Duration,
 		span.Status,
 		statusMessage,
-		string(attrs),
+		string(tags),
 		string(events),
 		span.ParentSpanID,
 		span.Children,
