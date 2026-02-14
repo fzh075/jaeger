@@ -78,6 +78,7 @@ var (
 	}
 )
 
+// TODO(fzh075) tags.error
 const nlSearchPromptTemplate = `You are a deterministic parser for Jaeger trace search.
 
 Convert the natural language query into structured search parameters JSON.
