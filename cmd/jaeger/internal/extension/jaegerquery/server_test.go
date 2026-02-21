@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/storagetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,7 +126,7 @@ func (f *fakeAIAnalysisExt) Shutdown(context.Context) error {
 	return nil
 }
 
-func (f *fakeAIAnalysisExt) RegisterRoutes(_ *mux.Router) error {
+func (f *fakeAIAnalysisExt) RegisterRoutes(_ *http.ServeMux) error {
 	f.called = true
 	return f.registerErr
 }
@@ -506,7 +505,7 @@ func TestRouteRegistrars(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, registrars, 1)
 
-		err = registrars[0](mux.NewRouter())
+		err = registrars[0](http.NewServeMux())
 		require.NoError(t, err)
 		require.True(t, aiExt.called)
 	})
@@ -534,7 +533,7 @@ func TestRouteRegistrars(t *testing.T) {
 		registrars, err := s.routeRegistrars(host)
 		require.NoError(t, err)
 		require.Len(t, registrars, 1)
-		err = registrars[0](mux.NewRouter())
+		err = registrars[0](http.NewServeMux())
 		require.ErrorContains(t, err, "register failed")
 	})
 }

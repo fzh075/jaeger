@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -24,7 +23,7 @@ type fakeExtension struct {
 	extension.Extension
 }
 
-func (*fakeExtension) RegisterRoutes(*mux.Router) error {
+func (*fakeExtension) RegisterRoutes(*http.ServeMux) error {
 	return nil
 }
 
@@ -110,7 +109,7 @@ func TestRegisterRoutes(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	ext := newAIAnalysisExtension(cfg, component.TelemetrySettings{})
 
-	router := mux.NewRouter()
+	router := http.NewServeMux()
 	err := ext.RegisterRoutes(router)
 	require.NoError(t, err)
 
@@ -136,7 +135,7 @@ func TestRegisterRoutesFeatureGate(t *testing.T) {
 	cfg.Features.SmartFilter = false
 	ext := newAIAnalysisExtension(cfg, component.TelemetrySettings{})
 
-	router := mux.NewRouter()
+	router := http.NewServeMux()
 	err := ext.RegisterRoutes(router)
 	require.NoError(t, err)
 

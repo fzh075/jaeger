@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/config/configgrpc"
@@ -155,8 +154,8 @@ type httpServer struct {
 
 var _ io.Closer = (*httpServer)(nil)
 
-// RouteRegistrar registers additional HTTP routes into the query router.
-type RouteRegistrar func(router *mux.Router) error
+// RouteRegistrar registers additional HTTP routes into the query server mux.
+type RouteRegistrar func(router *http.ServeMux) error
 
 func initRouter(
 	querySvc *querysvc.QueryService,

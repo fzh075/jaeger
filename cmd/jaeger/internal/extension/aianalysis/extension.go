@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/extension/extensioncapabilities"
@@ -28,7 +27,7 @@ var ErrExtensionNotConfigured = errors.New("cannot find ai_analysis extension")
 // Extension is the interface implemented by ai_analysis extension.
 type Extension interface {
 	extension.Extension
-	RegisterRoutes(router *mux.Router) error
+	RegisterRoutes(router *http.ServeMux) error
 }
 
 var (
@@ -106,7 +105,7 @@ func (s *aiAnalysisExtension) Shutdown(_ context.Context) error {
 }
 
 // RegisterRoutes registers AI Analysis HTTP endpoints into Query router.
-func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
+func (s *aiAnalysisExtension) RegisterRoutes(router *http.ServeMux) error {
 	if router == nil {
 		return errors.New("router is required")
 	}
@@ -114,7 +113,7 @@ func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
 		return fmt.Errorf("failed to initialize LLM provider: %w", err)
 	}
 
-	router.HandleFunc("/api/ai-analysis/capabilities", s.handleCapabilities).Methods(http.MethodGet)
+	router.HandleFunc("GET /api/ai-analysis/capabilities", s.handleCapabilities)
 
 	opts := handlers.HandlerOptions{
 		ProviderName:         s.config.LLM.Provider,
@@ -133,17 +132,17 @@ func (s *aiAnalysisExtension) RegisterRoutes(router *mux.Router) error {
 
 	if s.config.Features.NLSearch {
 		nlSearchHandler := handlers.NewNLSearchHandler(s.llmProvider, s.telset.Logger, opts)
-		router.HandleFunc("/api/ai-analysis/nl-search/parse", nlSearchHandler.Handle).Methods(http.MethodPost)
+		router.HandleFunc("POST /api/ai-analysis/nl-search/parse", nlSearchHandler.Handle)
 	}
 
 	if s.config.Features.SpanExplanation {
 		explainHandler := handlers.NewExplainHandler(s.llmProvider, s.telset.Logger, opts)
-		router.HandleFunc("/api/ai-analysis/spans/explain", explainHandler.Handle).Methods(http.MethodPost)
+		router.HandleFunc("POST /api/ai-analysis/spans/explain", explainHandler.Handle)
 	}
 
 	if s.config.Features.SmartFilter {
 		classifyHandler := handlers.NewClassifyHandler(s.llmProvider, s.telset.Logger, opts)
-		router.HandleFunc("/api/ai-analysis/spans/classify", classifyHandler.Handle).Methods(http.MethodPost)
+		router.HandleFunc("POST /api/ai-analysis/spans/classify", classifyHandler.Handle)
 	}
 
 	s.telset.Logger.Info("AI Analysis routes registered",

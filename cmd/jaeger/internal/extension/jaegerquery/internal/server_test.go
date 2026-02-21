@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1012,11 +1011,11 @@ func TestInitRouterWithExtraRouteRegistrars(t *testing.T) {
 	telset := initTelSet(zaptest.NewLogger(t), nooptrace.NewTracerProvider())
 
 	called := false
-	registrar := func(router *mux.Router) error {
+	registrar := func(router *http.ServeMux) error {
 		called = true
 		router.HandleFunc("/extra", func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
-		}).Methods(http.MethodGet)
+		})
 		return nil
 	}
 
@@ -1048,7 +1047,7 @@ func TestInitRouterWithRegistrarError(t *testing.T) {
 	tenancyMgr := tenancy.NewManager(&queryOpts.Tenancy)
 	telset := initTelSet(zaptest.NewLogger(t), nooptrace.NewTracerProvider())
 
-	registrar := func(*mux.Router) error {
+	registrar := func(*http.ServeMux) error {
 		return errors.New("register failed")
 	}
 

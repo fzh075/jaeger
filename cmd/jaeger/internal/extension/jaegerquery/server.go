@@ -7,8 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
-	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/extension/extensioncapabilities"
@@ -156,7 +156,7 @@ func (s *server) routeRegistrars(host component.Host) ([]queryapp.RouteRegistrar
 		return nil, fmt.Errorf("cannot get %s extension: %w", aianalysis.ID, err)
 	}
 	return []queryapp.RouteRegistrar{
-		func(router *mux.Router) error {
+		func(router *http.ServeMux) error {
 			return aiExt.RegisterRoutes(router)
 		},
 	}, nil
